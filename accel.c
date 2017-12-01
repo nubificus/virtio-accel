@@ -17,30 +17,50 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	struct virtio_accel *vaccel = vaccel_file->vaccel;
 	struct virtio_accel_request *req;
 	struct virtqueue *vq = vaccel->vq;
-	struct accel_session sess;
+	struct accel_session *sess = NULL;
+	void **usr = NULL;
 
 	switch (cmd) {
 	case ACCIOC_SESS_CREATE:
-		if (unlikely(copy_from_user(&sess, arg, sizeof(sess))))
-			return -EFAULT;
+		usr = kzalloc(2 * sizeof(void *), GFP_KERNEL);
+		if (!sess)
+			return -ENOMEM;
+		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
+		if (!sess)
+			return -ENOMEM;
+		if (unlikely(copy_from_user(sess, arg, sizeof(sess)))) {
+			ret = -EFAULT;
+			goto out;
+		}
 		
 		req = kzalloc(sizeof(*req), GFP_KERNEL);
 		if (!req)
 			return -ENOMEM;
-		ret = virtio_accel_req_create_session(req, vaccel, &sess);
-		if (!req) {
-			kfree(req);
-			return ret;
-		}
+		
+		usr[0] = arg;
+		usr[1] = sess;
+		req->priv = usr;
+		req->vaccel = vaccel;
+		ret = virtio_accel_req_create_session(req);
+		if (ret < 0)
+			goto out;
 	}
 
 	ret = virtio_accel_do_req(req);
-	if (req < 0) {
-		kfree(req);
-		return ret;
-	}
+	if (ret < 0)
+		goto err;
 
-	return -EINPROGRESS;
+	ret = -EINPROGRESS;
+	goto out;
+
+err:
+	kfree(req);
+out:
+	if(sess != NULL)
+		kfree(sess);
+	if(usr != NULL)
+		kfree(usr);
+	return ret;
 }
 
 static int accel_dev_open(struct inode *inode, struct file *filp)
