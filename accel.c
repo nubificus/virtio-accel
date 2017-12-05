@@ -18,10 +18,11 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	struct virtio_accel_request *req;
 	struct virtqueue *vq = vaccel->vq;
 	struct accel_session *sess = NULL;
+	struct accel_op *op = NULL;
 	void **usr = NULL;
 
 	switch (cmd) {
-	case ACCIOC_SESS_CREATE:
+	case ACCIOC_CRYPTO_SESS_CREATE:
 		usr = kzalloc(2 * sizeof(void *), GFP_KERNEL);
 		if (!sess)
 			return -ENOMEM;
@@ -30,7 +31,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			return -ENOMEM;
 		if (unlikely(copy_from_user(sess, arg, sizeof(sess)))) {
 			ret = -EFAULT;
-			goto out;
+			goto err;
 		}
 		
 		req = kzalloc(sizeof(*req), GFP_KERNEL);
@@ -41,25 +42,49 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		usr[1] = sess;
 		req->priv = usr;
 		req->vaccel = vaccel;
-		ret = virtio_accel_req_create_session(req);
+		ret = virtaccel_req_crypto_create_session(req);
 		if (ret < 0)
-			goto out;
+			goto err_req;
+		break;
+	case ACCIOC_CRYPTO_ENCRYPT:
+		op = kzalloc(sizeof(*op), GFP_KERNEL);
+		if (!op)
+			return -ENOMEM;
+		if (unlikely(copy_from_user(op, arg, sizeof(op)))) {
+			ret = -EFAULT;
+			goto err;
+		}
+
+		req = kzalloc(sizeof(*req), GFP_KERNEL);
+		if (!req)
+			return -ENOMEM;
+		
+		req->priv = op;
+		req->vaccel = vaccel;
+		ret = virtaccel_req_crypto_encrypt(req);
+		if (ret < 0)
+			goto err_req;
+
+		break;
 	}
 
-	ret = virtio_accel_do_req(req);
+
+	ret = virtaccel_do_req(req);
 	if (ret < 0)
-		goto err;
+		goto err_req;
 
 	ret = -EINPROGRESS;
-	goto out;
+	return ret;
 
-err:
+err_req:
 	kfree(req);
-out:
+err:
 	if(sess != NULL)
 		kfree(sess);
 	if(usr != NULL)
 		kfree(usr);
+	if(op != NULL)
+		kfree(op);
 	return ret;
 }
 

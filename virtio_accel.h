@@ -6,11 +6,19 @@ struct sessions_list {
 	u32 id;
 }
 
-struct virtio_accel_crypto_op {
+struct virtio_accel_crypto_sess {
 	__virtio32 cipher;
 	__virtio32 keylen;
-	__virtio32 *key;
-	__virtio32 padding;
+	__u8 *key;
+	__u8 padding[7];
+}
+
+struct virtio_accel_crypto_op {
+	__virtio32 src_len;
+	__virtio32 iv_len;
+	__u8 *src;
+	__u8 *iv;
+	__u8 padding[6];
 }
 
 struct virtio_accel_hdr {
@@ -18,6 +26,7 @@ struct virtio_accel_hdr {
 	__virtio32 op;
 	/* session create structs */
 	union {
+		struct virtio_accel_crypto_sess crypto_sess;
 		struct virtio_accel_crypto_op crypto_op;
 	} u;
 }
@@ -40,7 +49,7 @@ struct virtio_accel_request {
 	struct scatterlist **sgs;
 	unsigned int out_sgs;
 	unsigned int in_sgs;
-	void __user *priv;
+	void *priv;
 	u32 status;
 }
 
