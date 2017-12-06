@@ -15,10 +15,12 @@ struct virtio_accel_crypto_sess {
 
 struct virtio_accel_crypto_op {
 	__virtio32 src_len;
+	__virtio32 dst_len;
 	__virtio32 iv_len;
 	__u8 *src;
+	__u8 *dst;
 	__u8 *iv;
-	__u8 padding[6];
+	__u8 padding;
 }
 
 struct virtio_accel_hdr {

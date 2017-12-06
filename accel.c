@@ -46,6 +46,25 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		if (ret < 0)
 			goto err_req;
 		break;
+	case ACCIOC_CRYPTO_SESS_DESTROY:
+		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
+		if (!sess)
+			return -ENOMEM;
+		if (unlikely(copy_from_user(sess, arg, sizeof(sess)))) {
+			ret = -EFAULT;
+			goto err;
+		}
+		
+		req = kzalloc(sizeof(*req), GFP_KERNEL);
+		if (!req)
+			return -ENOMEM;
+		
+		req->priv = sess;
+		req->vaccel = vaccel;
+		ret = virtaccel_req_crypto_destroy_session(req);
+		if (ret < 0)
+			goto err_req;
+		break;
 	case ACCIOC_CRYPTO_ENCRYPT:
 		op = kzalloc(sizeof(*op), GFP_KERNEL);
 		if (!op)

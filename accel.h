@@ -16,9 +16,10 @@ struct accel_session {
 
 struct accel_crypto_op {
 	__u32 src_len;
+	__u32 dst_len;
+	__u32 iv_len;
 	__u8 __user *src;
 	__u8 __user *dst;
-	__u32 iv_len;
 	__u8 __user *iv;
 }
 
