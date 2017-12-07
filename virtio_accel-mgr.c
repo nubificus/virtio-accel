@@ -1,4 +1,4 @@
- /* Management for virtio crypto devices (refer to adf_dev_mgr.c)
+ /* Management for virtio accel devices (refer to adf_dev_mgr.c)
   *
   * Copyright 2016 HUAWEI TECHNOLOGIES CO., LTD.
   *
@@ -20,10 +20,10 @@
 #include <linux/list.h>
 #include <linux/module.h>
 
+#include "accel.h"
 #include "virtio_accel.h"
-#include "virtio_accel_common.h"
 
-static LIST_HEAD(virtio_accel_table);
+static LIST_HEAD(virtaccel_table);
 static uint32_t num_devices;
 
 /* The table_lock protects the above global list and num_devices */
@@ -33,7 +33,7 @@ static DEFINE_MUTEX(table_lock);
 
 
 /*
- * virtio_accel_devmgr_add_dev() - Add vaccel_dev to the acceleration
+ * virtaccel_devmgr_add_dev() - Add vaccel_dev to the acceleration
  * framework.
  * @vaccel_dev:  Pointer to virtio accel device.
  *
@@ -42,7 +42,7 @@ static DEFINE_MUTEX(table_lock);
  *
  * Return: 0 on success, error code othewise.
  */
-int virtio_accel_devmgr_add_dev(struct virtio_accel *vaccel_dev)
+int virtaccel_devmgr_add_dev(struct virtio_accel *vaccel_dev)
 {
 	struct list_head *itr;
 
@@ -54,7 +54,7 @@ int virtio_accel_devmgr_add_dev(struct virtio_accel *vaccel_dev)
 		return -EFAULT;
 	}
 
-	list_for_each(itr, &virtio_accel_table) {
+	list_for_each(itr, &virtaccel_table) {
 		struct virtio_accel *ptr =
 				list_entry(itr, struct virtio_accel, list);
 
@@ -64,28 +64,28 @@ int virtio_accel_devmgr_add_dev(struct virtio_accel *vaccel_dev)
 		}
 	}
 	atomic_set(&vaccel_dev->ref_count, 0);
-	list_add_tail(&vaccel_dev->list, &virtio_accel_table);
+	list_add_tail(&vaccel_dev->list, &virtaccel_table);
 	vaccel_dev->dev_id = num_devices++;
 	mutex_unlock(&table_lock);
 	return 0;
 }
 
-struct list_head *virtio_accel_devmgr_get_head(void)
+struct list_head *virtaccel_devmgr_get_head(void)
 {
-	return &virtio_accel_table;
+	return &virtaccel_table;
 }
 
 /*
- * virtio_accel_devmgr_rm_dev() - Remove vaccel_dev from the acceleration
+ * virtaccel_devmgr_rm_dev() - Remove vaccel_dev from the acceleration
  * framework.
- * @vaccel_dev:  Pointer to virtio crypto device.
+ * @vaccel_dev:  Pointer to virtio accel device.
  *
- * Function removes virtio crypto device from the acceleration framework.
- * To be used by virtio crypto device specific drivers.
+ * Function removes virtio accel device from the acceleration framework.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: void
  */
-void virtio_accel_devmgr_rm_dev(struct virtio_accel *vaccel_dev)
+void virtaccel_devmgr_rm_dev(struct virtio_accel *vaccel_dev)
 {
 	mutex_lock(&table_lock);
 	list_del(&vaccel_dev->list);
@@ -94,22 +94,22 @@ void virtio_accel_devmgr_rm_dev(struct virtio_accel *vaccel_dev)
 }
 
 /*
- * virtio_accel_devmgr_get_first()
+ * virtaccel_devmgr_get_first()
  *
- * Function returns the first virtio crypto device from the acceleration
+ * Function returns the first virtio accel device from the acceleration
  * framework.
  *
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: pointer to vaccel_dev or NULL if not found.
  */
-struct virtio_accel *virtio_accel_devmgr_get_first(void)
+struct virtio_accel *virtaccel_devmgr_get_first(void)
 {
 	struct virtio_accel *dev = NULL;
 
 	mutex_lock(&table_lock);
-	if (!list_empty(&virtio_accel_table))
-		dev = list_first_entry(&virtio_accel_table,
+	if (!list_empty(&virtaccel_table))
+		dev = list_first_entry(&virtaccel_table,
 					struct virtio_accel,
 				    list);
 	mutex_unlock(&table_lock);
@@ -117,30 +117,30 @@ struct virtio_accel *virtio_accel_devmgr_get_first(void)
 }
 
 /*
- * virtio_accel_dev_in_use() - Check whether vaccel_dev is currently in use
- * @vaccel_dev: Pointer to virtio crypto device.
+ * virtaccel_dev_in_use() - Check whether vaccel_dev is currently in use
+ * @vaccel_dev: Pointer to virtio accel device.
  *
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: 1 when device is in use, 0 otherwise.
  */
-int virtio_accel_dev_in_use(struct virtio_accel *vaccel_dev)
+int virtaccel_dev_in_use(struct virtio_accel *vaccel_dev)
 {
 	return atomic_read(&vaccel_dev->ref_count) != 0;
 }
 
 /*
- * virtio_accel_dev_get() - Increment vaccel_dev reference count
- * @vaccel_dev: Pointer to virtio crypto device.
+ * virtaccel_dev_get() - Increment vaccel_dev reference count
+ * @vaccel_dev: Pointer to virtio accel device.
  *
  * Increment the vaccel_dev refcount and if this is the first time
  * incrementing it during this period the vaccel_dev is in use,
  * increment the module refcount too.
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: 0 when successful, EFAULT when fail to bump module refcount
  */
-int virtio_accel_dev_get(struct virtio_accel *vaccel_dev)
+int virtaccel_dev_get(struct virtio_accel *vaccel_dev)
 {
 	if (atomic_add_return(1, &vaccel_dev->ref_count) == 1)
 		if (!try_module_get(vaccel_dev->owner))
@@ -149,57 +149,57 @@ int virtio_accel_dev_get(struct virtio_accel *vaccel_dev)
 }
 
 /*
- * virtio_accel_dev_put() - Decrement vaccel_dev reference count
- * @vaccel_dev: Pointer to virtio crypto device.
+ * virtaccel_dev_put() - Decrement vaccel_dev reference count
+ * @vaccel_dev: Pointer to virtio accel device.
  *
  * Decrement the vaccel_dev refcount and if this is the last time
  * decrementing it during this period the vaccel_dev is in use,
  * decrement the module refcount too.
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: void
  */
-void virtio_accel_dev_put(struct virtio_accel *vaccel_dev)
+void virtaccel_dev_put(struct virtio_accel *vaccel_dev)
 {
 	if (atomic_sub_return(1, &vaccel_dev->ref_count) == 0)
 		module_put(vaccel_dev->owner);
 }
 
 /*
- * virtio_accel_dev_started() - Check whether device has started
- * @vaccel_dev: Pointer to virtio crypto device.
+ * virtaccel_dev_started() - Check whether device has started
+ * @vaccel_dev: Pointer to virtio accel device.
  *
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: 1 when the device has started, 0 otherwise
  */
-int virtio_accel_dev_started(struct virtio_accel *vaccel_dev)
+int virtaccel_dev_started(struct virtio_accel *vaccel_dev)
 {
 	return (vaccel_dev->status & VIRTIO_CRYPTO_S_HW_READY);
 }
 
 /*
- * virtio_accel_get_dev_node() - Get vaccel_dev on the node.
+ * virtaccel_get_dev_node() - Get vaccel_dev on the node.
  * @node:  Node id the driver works.
  *
- * Function returns the virtio crypto device used fewest on the node.
+ * Function returns the virtio accel device used fewest on the node.
  *
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: pointer to vaccel_dev or NULL if not found.
  */
-struct virtio_accel *virtio_accel_get_dev_node(int node)
+struct virtio_accel *virtaccel_get_dev_node(int node)
 {
 	struct virtio_accel *vaccel_dev = NULL, *tmp_dev;
 	unsigned long best = ~0;
 	unsigned long ctr;
 
 	mutex_lock(&table_lock);
-	list_for_each_entry(tmp_dev, virtio_accel_devmgr_get_head(), list) {
+	list_for_each_entry(tmp_dev, virtaccel_devmgr_get_head(), list) {
 
 		if ((node == dev_to_node(&tmp_dev->vdev->dev) ||
 		     dev_to_node(&tmp_dev->vdev->dev) < 0) &&
-		    virtio_accel_dev_started(tmp_dev)) {
+		    virtaccel_dev_started(tmp_dev)) {
 			ctr = atomic_read(&tmp_dev->ref_count);
 			if (best > ctr) {
 				vaccel_dev = tmp_dev;
@@ -213,8 +213,8 @@ struct virtio_accel *virtio_accel_get_dev_node(int node)
 				node);
 		/* Get any started device */
 		list_for_each_entry(tmp_dev,
-				virtio_accel_devmgr_get_head(), list) {
-			if (virtio_accel_dev_started(tmp_dev)) {
+				virtaccel_devmgr_get_head(), list) {
+			if (virtaccel_dev_started(tmp_dev)) {
 				vaccel_dev = tmp_dev;
 				break;
 			}
@@ -224,23 +224,23 @@ struct virtio_accel *virtio_accel_get_dev_node(int node)
 	if (!vaccel_dev)
 		return NULL;
 
-	virtio_accel_dev_get(vaccel_dev);
+	virtaccel_dev_get(vaccel_dev);
 	return vaccel_dev;
 }
 
 /*
- * virtio_accel_dev_start() - Start virtio crypto device
- * @vaccel:    Pointer to virtio crypto device.
+ * virtaccel_dev_start() - Start virtio accel device
+ * @vaccel:    Pointer to virtio accel device.
  *
- * Function notifies all the registered services that the virtio crypto device
+ * Function notifies all the registered services that the virtio accel device
  * is ready to be used.
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: 0 on success, EFAULT when fail to register algorithms
  */
-int virtio_accel_dev_start(struct virtio_accel *vaccel)
+int virtaccel_dev_start(struct virtio_accel *vaccel)
 {
-	if (virtio_accel_algs_register()) {
+	if (virtaccel_algs_register()) {
 		pr_err("virtio_accel: Failed to register crypto algs\n");
 		return -EFAULT;
 	}
@@ -249,16 +249,16 @@ int virtio_accel_dev_start(struct virtio_accel *vaccel)
 }
 
 /*
- * virtio_accel_dev_stop() - Stop virtio crypto device
- * @vaccel:    Pointer to virtio crypto device.
+ * virtaccel_dev_stop() - Stop virtio accel device
+ * @vaccel:    Pointer to virtio accel device.
  *
- * Function notifies all the registered services that the virtio crypto device
+ * Function notifies all the registered services that the virtio accel device
  * is ready to be used.
- * To be used by virtio crypto device specific drivers.
+ * To be used by virtio accel device specific drivers.
  *
  * Return: void
  */
-void virtio_accel_dev_stop(struct virtio_accel *vaccel)
+void virtaccel_dev_stop(struct virtio_accel *vaccel)
 {
-	virtio_accel_algs_unregister();
+	virtaccel_algs_unregister();
 }
