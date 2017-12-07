@@ -159,11 +159,29 @@ free:
 	return ret;
 }
 
+void
+virtaccel_clear_req(struct virtio_accel_request *req)
+{
+	if (req) {
+		kzfree(req->vaccel);
+		kfree(req->sgs);
+	}
+}
+
+void virtaccel_handle_req_result(struct virtio_accel_request *req)
+{
+	// TODO: Handle result
+
+	virtaccel_clear_req(req);
+}
+
 int virtaccel_do_req(virtio_accel_request *req)
 {
 	virtio_accel *va = req->vaccel;
 	int ret;
 	unsigned long flags;
+
+	init_completion(&req->completion);
 
 	spin_lock_irqsave(va->vq_lock, flags);
 	ret = virtqueue_add_sgs(va->vq, sgs, va->out_sgs,
@@ -178,5 +196,5 @@ int virtaccel_do_req(virtio_accel_request *req)
 		return ret;
 	}
 
-	return 0;
+	return -EINPROGRESS;
 }

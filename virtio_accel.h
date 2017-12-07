@@ -1,6 +1,8 @@
 #ifndef _VIRTIO_ACCEL_H
 #define _VIRTIO_ACCEL_H
 
+#include <linux/completion.h>
+
 struct sessions_list {
 	struct list_head list;
 	u32 id;
@@ -53,6 +55,7 @@ struct virtio_accel_request {
 	unsigned int in_sgs;
 	void *priv;
 	u32 status;
+	struct completion completion;
 }
 
 struct virtio_accel_file {

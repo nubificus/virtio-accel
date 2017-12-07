@@ -24,20 +24,10 @@
 #include "accel.h"
 #include "virtio_accel.h"
 
-
-static void
-virtaccel_clear_request(struct virtaccel_request *req)
-{
-	if (req) {
-		kzfree(req->vaccel);
-		kfree(req->sgs);
-	}
-}
-
 static void virtaccel_dataq_callback(struct virtqueue *vq)
 {
 	struct virtio_accel *vaccel = vq->vdev->priv;
-	struct virtaccel_request *req;
+	struct virtio_accel_request *req;
 	unsigned long flags;
 	unsigned int len;
 	int error;
@@ -51,35 +41,28 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 	spin_lock_irqsave(&vaccel->vq[qid].lock, flags);
 	do {
 		virtqueue_disable_cb(vq);
-		// TODO:
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-			if (req->type == VIRTIO_CRYPTO_SYM_OP_CIPHER) {
-				switch (req->status) {
-				case VIRTIO_CRYPTO_OK:
-					error = 0;
-					break;
-				case VIRTIO_CRYPTO_INVSESS:
-				case VIRTIO_CRYPTO_ERR:
-					error = -EINVAL;
-					break;
-				case VIRTIO_CRYPTO_BADMSG:
-					error = -EBADMSG;
-					break;
-				default:
-					error = -EIO;
-					break;
-				}
-				ablk_req = vc_req->ablkcipher_req;
-
-				spin_unlock_irqrestore(
-					&vaccel->data_vq[qid].lock, flags);
-				virtio_acccel_clear_request(vc_req);
-				/* Finish the encrypt or decrypt process */
-				ablk_req->base.complete(&ablk_req->base, error);
-				spin_lock_irqsave(
-					&vaccel->data_vq[qid].lock, flags);
+			switch (req->status) {
+			case VIRTIO_ACCEL_OK:
+				error = 0;
+				break;
+			case VIRTIO_ACCEL_INVSESS:
+			case VIRTIO_ACCEL_ERR:
+				error = -EINVAL;
+				break;
+			case VIRTIO_ACCEL_BADMSG:
+				error = -EBADMSG;
+				break;
+			default:
+				error = -EIO;
+				break;
 			}
-			//
+			
+			spin_unlock_irqrestore(&vaccel->data_vq[qid].lock, flags);
+			/* Finish the encrypt or decrypt process */
+			virtaccel_handle_req_result(req);
+			complete(&req->completion);
+			spin_lock_irqsave(&vaccel->data_vq[qid].lock, flags);
 		}
 	} while (!virtqueue_enable_cb(vq));
 	spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
@@ -184,7 +167,7 @@ static int virtaccel_update_status(struct virtio_accel *vaccel)
 	int err;
 
 	virtio_cread(vcrypto->vdev,
-	    struct virtio_crypto_config, status, &status);
+	    struct virtio_accel_config, status, &status);
 
 	/*
 	 * Unknown status bits would be a host error and the driver

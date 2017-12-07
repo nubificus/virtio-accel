@@ -89,11 +89,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 
 	ret = virtaccel_do_req(req);
-	if (ret < 0)
+	if (ret != -EINPROGRESS)
 		goto err_req;
 
-	ret = -EINPROGRESS;
-	return ret;
+	wait_for_completion(&req->completion);
+
+	return req->status;
 
 err_req:
 	kfree(req);
