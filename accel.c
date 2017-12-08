@@ -29,7 +29,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
 		if (!sess)
 			return -ENOMEM;
-		if (unlikely(copy_from_user(sess, arg, sizeof(sess)))) {
+		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
 			ret = -EFAULT;
 			goto err;
 		}
@@ -50,7 +50,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
 		if (!sess)
 			return -ENOMEM;
-		if (unlikely(copy_from_user(sess, arg, sizeof(sess)))) {
+		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
 			ret = -EFAULT;
 			goto err;
 		}
@@ -69,7 +69,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		op = kzalloc(sizeof(*op), GFP_KERNEL);
 		if (!op)
 			return -ENOMEM;
-		if (unlikely(copy_from_user(op, arg, sizeof(op)))) {
+		if (unlikely(copy_from_user(op, arg, sizeof(*op)))) {
 			ret = -EFAULT;
 			goto err;
 		}

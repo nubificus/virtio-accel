@@ -12,7 +12,7 @@ int virtaccel_req_crypto_create_session(virtio_accel_request *req)
 {
 	struct scatterlist hdr_sg, key_sg, sid_sg, status_sg, **sgs;
 	struct virtio_accel *vaccel = req->vaccel;
-	struct virtio_accel_header *h = &req->header;
+	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess = req->priv[1];
 
 	sgs = kzalloc_node(4 * sizeof(*sgs), GFP_ATOMIC,
@@ -60,7 +60,7 @@ int virtaccel_req_crypto_destroy_session(virtio_accel_request *req)
 {
 	struct scatterlist hdr_sg, status_sg, **sgs;
 	struct virtio_accel *vaccel = req->vaccel;
-	struct virtio_accel_header *h = &req->header;
+	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess = req->priv;
 
 	sgs = kzalloc_node(2 * sizeof(*sgs), GFP_ATOMIC,
@@ -86,11 +86,11 @@ free:
 	return ret;
 }
 
-int virtaccel_req_crypto_encrypt(virtio_accel_request *req)
+int virtaccel_req_crypto_operation(virtio_accel_request *req, int opcode)
 {
 	struct scatterlist hdr_sg, src_sg, dst_sg, iv_sg, status_sg, **sgs;
 	struct virtio_accel *vaccel = req->vaccel;
-	struct virtio_accel_header *h = &req->header;
+	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_op *aop = req->priv;
 
 	sgs = kzalloc_node(4 * sizeof(*sgs), GFP_ATOMIC,
@@ -98,7 +98,7 @@ int virtaccel_req_crypto_encrypt(virtio_accel_request *req)
 	if (!sgs)
 	   return -ENOMEM;
 
-	h->op = cpu_to_virtio32(VIRTIO_ACCEL_CRYPTO_CIPHER_ENCRYPT);
+	h->op = cpu_to_virtio32(opcode);
 	h->session_id = cpu_to_virtio32(aop->session_id);
 
 	h->u.crypto_op.src = kzalloc_node(sizeof(*h->u.crypto_op.src), GFP_ATOMIC,
@@ -159,8 +159,7 @@ free:
 	return ret;
 }
 
-void
-virtaccel_clear_req(struct virtio_accel_request *req)
+static void virtaccel_clear_req(struct virtio_accel_request *req)
 {
 	if (req) {
 		kzfree(req->vaccel);
@@ -168,10 +167,41 @@ virtaccel_clear_req(struct virtio_accel_request *req)
 	}
 }
 
-void virtaccel_handle_req_result(struct virtio_accel_request *req)
+static void virtaccel_handle_req_result(struct virtio_accel_request *req)
 {
-	// TODO: Handle result
+	struct virtio_accel_hdr *h = &req->hdr;
+	struct accel_session *sess;
+	struct accel_op *op;
 
+	if (req->status != VIRTIO_ACCEL_OK)
+		goto out;
+
+	switch (req->hdr.op) {
+	case VIRTIO_ACCEL_CRYPTO_CIPHER_CREATE_SESSION:
+		sess = req->priv[1];
+		if (unlikely(copy_to_user(req->priv[0], sess, sizeof(*sess)))) {
+			kfree(sess);
+			req->status = VIRTIO_ACCEL_ERR;
+			goto out;
+		}
+		kfree(sess);
+		break;
+	case VIRTIO_ACCEL_CRYPTO_CIPHER_DESTROY_SESSION:
+		break;
+	case VIRTIO_ACCEL_CRYPTO_CIPHER_ENCRYPT:
+	case VIRTIO_ACCEL_CRYPTO_CIPHER_DECRYPT:
+		op = req->priv;
+		if (unlikely(copy_to_user(op->u.crypto.dst, h->u.crypto_op.dst,
+						h->u.crypto_op.dst_len))) {
+			kfree(op);
+			req->status = VIRTIO_ACCEL_ERR;
+			goto out;
+		}
+		kfree(op);
+		break;
+	}
+
+out:
 	virtaccel_clear_req(req);
 }
 

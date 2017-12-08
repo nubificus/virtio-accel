@@ -48,7 +48,7 @@ struct virtio_accel {
 };
 
 struct virtio_accel_request {
-	struct virtio_accel_hdr header;
+	struct virtio_accel_hdr hdr;
 	struct virtio_accel *vaccel;
 	struct scatterlist **sgs;
 	unsigned int out_sgs;
@@ -64,7 +64,15 @@ struct virtio_accel_file {
 }
 
 
-int virtio_accel_req_create_session(virtio_accel_request *req, virtio_accel *va, accel_session *sess);
-int virtio_accel_do_req(virtio_accel_request *req);
+int virtaccel_req_create_session(virtio_accel_request *req);
+int virtaccel_req_destroy_session(virtio_accel_request *req);
+int virtaccel_req_crypto_operation(virtio_accel_request *req);
+int virtaccel_do_req(virtio_accel_request *req);
+
+#define virtaccel_req_crypto_encrypt(a) \
+	virtaccel_req_crypto_operation(a, VIRTIO_ACCEL_CRYPTO_CIPHER_ENCRYPT)
+
+#define virtaccel_req_crypto_decrypt(a) \
+	virtaccel_req_crypto_operation(a, VIRTIO_ACCEL_CRYPTO_CIPHER_DECRYPT)
 
 #endif /* _VIRTIO_ACCEL_H */
