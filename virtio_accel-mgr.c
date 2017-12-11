@@ -19,6 +19,8 @@
 #include <linux/mutex.h>
 #include <linux/list.h>
 #include <linux/module.h>
+#include <linux/device.h>
+#include <linux/virtio.h>
 
 #include "accel.h"
 #include "virtio_accel.h"
@@ -175,7 +177,7 @@ void virtaccel_dev_put(struct virtio_accel *vaccel_dev)
  */
 int virtaccel_dev_started(struct virtio_accel *vaccel_dev)
 {
-	return (vaccel_dev->status & VIRTIO_CRYPTO_S_HW_READY);
+	return (vaccel_dev->status & VIRTIO_ACCEL_S_HW_READY);
 }
 
 /*
@@ -240,11 +242,6 @@ struct virtio_accel *virtaccel_get_dev_node(int node)
  */
 int virtaccel_dev_start(struct virtio_accel *vaccel)
 {
-	if (virtaccel_algs_register()) {
-		pr_err("virtio_accel: Failed to register crypto algs\n");
-		return -EFAULT;
-	}
-
 	return 0;
 }
 
@@ -260,5 +257,5 @@ int virtaccel_dev_start(struct virtio_accel *vaccel)
  */
 void virtaccel_dev_stop(struct virtio_accel *vaccel)
 {
-	virtaccel_algs_unregister();
+	return;
 }

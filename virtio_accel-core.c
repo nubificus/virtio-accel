@@ -27,7 +27,7 @@
 static void virtaccel_dataq_callback(struct virtqueue *vq)
 {
 	struct virtio_accel *vaccel = vq->vdev->priv;
-	struct virtio_accel_request *req;
+	struct virtio_accel_req *req;
 	unsigned long flags;
 	unsigned int len;
 	int error;
@@ -58,11 +58,11 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 				break;
 			}
 			
-			spin_unlock_irqrestore(&vaccel->data_vq[qid].lock, flags);
+			spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
 			/* Finish the encrypt or decrypt process */
 			virtaccel_handle_req_result(req);
 			complete(&req->completion);
-			spin_lock_irqsave(&vaccel->data_vq[qid].lock, flags);
+			spin_lock_irqsave(&vaccel->vq[qid].lock, flags);
 		}
 	} while (!virtqueue_enable_cb(vq));
 	spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
@@ -85,7 +85,7 @@ static int virtaccel_find_vqs(struct virtio_accel *vaccel)
 	/* Allocate space for find_vqs parameters */
 	vqs = kcalloc(total_vqs, sizeof(*vqs), GFP_KERNEL);
 	if (!vqs)
-		goto err_vq;
+		goto err;
 	callbacks = kcalloc(total_vqs, sizeof(*callbacks), GFP_KERNEL);
 	if (!callbacks)
 		goto err_callback;
@@ -97,7 +97,7 @@ static int virtaccel_find_vqs(struct virtio_accel *vaccel)
 	for (i = 0; i < total_vqs; i++) {
 		callbacks[i] = virtaccel_dataq_callback;
 		snprintf(vaccel->vq[i].name, sizeof(vaccel->vq[i].name),
-				"dataq.%d", i);
+				"q.%d", i);
 		names[i] = vaccel->vq[i].name;
 	}
 
@@ -123,7 +123,7 @@ err_names:
 	kfree(callbacks);
 err_callback:
 	kfree(vqs);
-err_vq:
+err:
 	return ret;
 }
 
@@ -156,7 +156,7 @@ static int virtaccel_init_vqs(struct virtio_accel *vaccel)
 	return 0;
 
 err_free:
-	virtaccel_free_queues(vi);
+	virtaccel_free_queues(vaccel);
 err:
 	return ret;
 }
@@ -166,8 +166,8 @@ static int virtaccel_update_status(struct virtio_accel *vaccel)
 	u32 status;
 	int err;
 
-	virtio_cread(vcrypto->vdev,
-	    struct virtio_accel_config, status, &status);
+	virtio_cread(vaccel->vdev,
+	    struct virtio_accel_conf, status, &status);
 
 	/*
 	 * Unknown status bits would be a host error and the driver
@@ -244,7 +244,7 @@ static int virtaccel_probe(struct virtio_device *vdev)
 
 	vaccel = kzalloc_node(sizeof(*vaccel), GFP_KERNEL,
 					dev_to_node(&vdev->dev));
-	if (!accel)
+	if (!vaccel)
 		return -ENOMEM;
 	
 	/* Add virtio crypto accel to global table */
@@ -256,8 +256,6 @@ static int virtaccel_probe(struct virtio_device *vdev)
 	vaccel->owner = THIS_MODULE;
 	vaccel = vdev->priv = vaccel;
 	vaccel->vdev = vdev;
-
-	spin_lock_init(&vaccel->vq_lock);
 
 	err = virtaccel_init_vqs(vaccel);
 	if (err) {
@@ -284,14 +282,12 @@ free:
 
 static void virtaccel_free_unused_reqs(struct virtio_accel *vaccel)
 {
-	struct virtio_accel_request *req;
+	struct virtio_accel_req *req;
 	int i;
 	struct virtqueue *vq;
 
-	for (i = 0; i < vaccel->max_data_queues; i++) {
-		while ((req = virtqueue_detach_unused_buf(vaccel->vq[i])) != NULL) {
-			kfree(req->sgs);
-		}
+	while ((req = virtqueue_detach_unused_buf(vaccel->vq[0].vq)) != NULL) {
+		kfree(req->sgs);
 	}
 }
 
@@ -306,15 +302,15 @@ static void virtaccel_remove(struct virtio_device *vdev)
 	vdev->config->reset(vdev);
 	virtaccel_free_unused_reqs(vaccel);
 	virtaccel_del_vqs(vaccel);
-	virtaccel_devmgr_rm_dev(vcaccel);
-	kfree(vcrypto);
+	virtaccel_devmgr_rm_dev(vaccel);
+	kfree(vaccel);
 }
 
 static void virtaccel_config_changed(struct virtio_device *vdev)
 {
 	struct virtio_accel *vaccel = vdev->priv;
 
-	virtio_acccel_update_status(vaccel);
+	virtaccel_update_status(vaccel);
 }
 
 static unsigned int features[] = {
