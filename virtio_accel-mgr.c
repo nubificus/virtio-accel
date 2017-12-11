@@ -23,7 +23,7 @@
 #include <linux/virtio.h>
 
 #include "accel.h"
-#include "virtio_accel.h"
+#include "virtio_accel-common.h"
 
 static LIST_HEAD(virtaccel_table);
 static uint32_t num_devices;

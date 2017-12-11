@@ -22,7 +22,7 @@
 #include <linux/cpu.h>
 
 #include "accel.h"
-#include "virtio_accel.h"
+#include "virtio_accel-common.h"
 
 static void virtaccel_dataq_callback(struct virtqueue *vq)
 {

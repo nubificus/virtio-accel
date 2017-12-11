@@ -8,7 +8,7 @@
 #include <linux/virtio_config.h>
 
 #include "accel.h"
-#include "virtio_accel.h"
+#include "virtio_accel-common.h"
 
 static long accel_dev_ioctl(struct file *filp, unsigned int cmd, 
                                 unsigned long _arg)

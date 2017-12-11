@@ -7,7 +7,7 @@
 #include <linux/virtio_config.h>
 
 #include "accel.h"
-#include "virtio_accel.h"
+#include "virtio_accel-common.h"
 
 
 int virtaccel_req_crypto_create_session(struct virtio_accel_req *req)
