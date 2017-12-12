@@ -39,11 +39,21 @@ struct virtio_accel_crypto_op {
 struct virtio_accel_hdr {
 	__virtio32 session_id;
 
-#define VIRTIO_ACCEL_NO_OP                       0
-#define VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION  1
-#define VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION 2
-#define VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT         3
-#define VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT         4
+#define VIRTIO_ACCEL_NO_OP                        0
+#define VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION   1
+#define VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION  2
+#define VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT          3
+#define VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT          4
+#define VIRTIO_ACCEL_C_OP_HASH_CREATE_SESSION     5
+#define VIRTIO_ACCEL_C_OP_MAC_CREATE_SESSION      6
+#define VIRTIO_ACCEL_C_OP_AEAD_CREATE_SESSION     7
+#define VIRTIO_ACCEL_C_OP_HASH_DESTROY_SESSION    8
+#define VIRTIO_ACCEL_C_OP_MAC_DESTROY_SESSION     9
+#define VIRTIO_ACCEL_C_OP_AEAD_DESTROY_SESSION   10
+#define VIRTIO_ACCEL_C_OP_HASH                   11
+#define VIRTIO_ACCEL_C_OP_MAC                    12
+#define VIRTIO_ACCEL_C_OP_AEAD_ENCRYPT           13
+#define VIRTIO_ACCEL_C_OP_AEAD_DECRYPT           14
 	__virtio32 op;
 	/* session create structs */
 	union {
