@@ -35,8 +35,10 @@ int virtaccel_req_crypto_create_session(struct virtio_accel_req *req)
 	h->u.crypto_sess.cipher = cpu_to_virtio32(vdev, sess->u.crypto.cipher);
 	h->u.crypto_sess.keylen = cpu_to_virtio32(vdev, sess->u.crypto.keylen);
 	
+	pr_debug("sess keylen: %u, cipher: %d\n", sess->u.crypto.keylen,
+				sess->u.crypto.cipher);
 	pr_debug("op: %d, keylen: %u, cipher: %d\n", h->op,
-				 h->u.crypto_sess.keylen, h->u.crypto_sess.cipher);
+				h->u.crypto_sess.keylen, h->u.crypto_sess.cipher);
 	sg_init_one(&hdr_sg, h, sizeof(*h));
 	sgs[0] = &hdr_sg;
 	sg_init_one(&key_sg, h->u.crypto_sess.key, h->u.crypto_sess.keylen);
@@ -173,7 +175,6 @@ void virtaccel_clear_req(struct virtio_accel_req *req)
 {
 	if (req) {
 		kzfree(req->vaccel);
-		kfree(req->sgs);
 	}
 }
 
@@ -212,6 +213,7 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 	}
 
 out:
+	complete(&req->completion);
 	virtaccel_clear_req(req);
 }
 
