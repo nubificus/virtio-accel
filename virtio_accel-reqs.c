@@ -12,67 +12,64 @@
 
 int virtaccel_req_crypto_create_session(struct virtio_accel_req *req)
 {
-	struct scatterlist hdr_sg, key_sg, sid_sg, status_sg, **sgs;
+	struct scatterlist hdr_sg, key_sg, sid_sg, status_sg, *sgs[4];
 	struct virtio_accel *vaccel = req->vaccel;
 	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess = req->priv;
 	int ret;
 
-	sgs = kzalloc_node(4 * sizeof(*sgs), GFP_ATOMIC,
-				dev_to_node(&vaccel->vdev->dev));
-	if (!sgs)
-	   return -ENOMEM;
-
 	h->op = cpu_to_virtio32(vdev, VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION);
 
-	h->u.crypto_sess.key = kzalloc_node(sizeof(*h->u.crypto_sess.key),
+	h->u.crypto_sess.key = kzalloc_node(sess->u.crypto.keylen,
 								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
 	if (!h->u.crypto_sess.key)
 		return -ENOMEM;
 	
-	if (unlikely(copy_from_user(&h->u.crypto_sess.key, sess->u.crypto.key, 
-								sizeof(sess)))) {
+	if (unlikely(copy_from_user(h->u.crypto_sess.key, sess->u.crypto.key, 
+								sess->u.crypto.keylen))) {
 		ret = -EFAULT;
 		goto free;
 	}
 
 	h->u.crypto_sess.cipher = cpu_to_virtio32(vdev, sess->u.crypto.cipher);
 	h->u.crypto_sess.keylen = cpu_to_virtio32(vdev, sess->u.crypto.keylen);
-
+	
+	pr_debug("op: %d, keylen: %u, cipher: %d\n", h->op,
+				 h->u.crypto_sess.keylen, h->u.crypto_sess.cipher);
 	sg_init_one(&hdr_sg, h, sizeof(*h));
 	sgs[0] = &hdr_sg;
-	sg_init_one(&key_sg, h->u.crypto_sess.key, sizeof(h->u.crypto_sess.keylen));
+	sg_init_one(&key_sg, h->u.crypto_sess.key, h->u.crypto_sess.keylen);
 	sgs[1] = &key_sg;
-	sg_init_one(&sid_sg, &sess->id, sizeof(sess->id));
+	sg_init_one(&sid_sg, &h->session_id, sizeof(h->session_id));
 	sgs[2] = &sid_sg;
 	sg_init_one(&status_sg, &req->status, sizeof(req->status));
 	sgs[3] = &status_sg;
-
+	
 	req->sgs = sgs;
 	req->out_sgs = 2;
 	req->in_sgs = 2;
 
-	return 0;
+	ret = virtaccel_do_req(req);
+	if (ret != -EINPROGRESS)
+		goto free;
+
+	req->sgs = NULL;
+	return ret;
 
 free:
-	kfree(&h->u.crypto_sess.key);
+	kzfree(h->u.crypto_sess.key);
 	return ret;
 }
 
 int virtaccel_req_crypto_destroy_session(struct virtio_accel_req *req)
 {
-	struct scatterlist hdr_sg, status_sg, **sgs;
+	struct scatterlist hdr_sg, status_sg, *sgs[2];
 	struct virtio_accel *vaccel = req->vaccel;
 	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess = req->priv;
 	int ret;
-
-	sgs = kzalloc_node(2 * sizeof(*sgs), GFP_ATOMIC,
-				dev_to_node(&vaccel->vdev->dev));
-	if (!sgs)
-	   return -ENOMEM;
 
 	h->op = cpu_to_virtio32(vdev, VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION);
 	h->session_id = cpu_to_virtio32(vdev, sess->id);
@@ -86,7 +83,12 @@ int virtaccel_req_crypto_destroy_session(struct virtio_accel_req *req)
 	req->out_sgs = 1;
 	req->in_sgs = 1;
 
-	return 0;
+	ret = virtaccel_do_req(req);
+	if (ret != -EINPROGRESS)
+		goto free;
+	
+	req->sgs = NULL;
+	return ret;
 
 free:
 	return ret;
@@ -94,42 +96,37 @@ free:
 
 int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 {
-	struct scatterlist hdr_sg, src_sg, dst_sg, iv_sg, status_sg, **sgs;
+	struct scatterlist hdr_sg, src_sg, dst_sg, iv_sg, status_sg, *sgs[4];
 	struct virtio_accel *vaccel = req->vaccel;
 	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_op *aop = req->priv;
 	int ret;
 
-	sgs = kzalloc_node(4 * sizeof(*sgs), GFP_ATOMIC,
-				dev_to_node(&vaccel->vdev->dev));
-	if (!sgs)
-	   return -ENOMEM;
-
 	h->op = cpu_to_virtio32(vdev, opcode);
 	h->session_id = cpu_to_virtio32(vdev, aop->session_id);
 
-	h->u.crypto_op.src = kzalloc_node(sizeof(*h->u.crypto_op.src), GFP_ATOMIC,
+	h->u.crypto_op.src = kzalloc_node(aop->u.crypto.src_len, GFP_ATOMIC,
 								dev_to_node(&vaccel->vdev->dev));
 	if (!h->u.crypto_op.src)
 		return -ENOMEM;
 	
-	if (unlikely(copy_from_user(&h->u.crypto_op.src, aop->u.crypto.src, 
-								sizeof(aop->u.crypto.src_len)))) {
+	if (unlikely(copy_from_user(h->u.crypto_op.src, aop->u.crypto.src, 
+								aop->u.crypto.src_len))) {
 		ret = -EFAULT;
 		goto free;
 	}
 
 	if (aop->u.crypto.src != aop->u.crypto.dst) {
-		h->u.crypto_op.dst = kzalloc_node(sizeof(*h->u.crypto_op.dst), 
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+		h->u.crypto_op.dst = kzalloc_node(aop->u.crypto.dst_len, GFP_ATOMIC,
+								dev_to_node(&vaccel->vdev->dev));
 		if (!h->u.crypto_op.dst) {
 			ret = -ENOMEM;
 			goto free;
 		}
 		
-		if (unlikely(copy_from_user(&h->u.crypto_op.dst, aop->u.crypto.dst, 
-									sizeof(aop->u.crypto.dst_len)))) {
+		if (unlikely(copy_from_user(h->u.crypto_op.dst, aop->u.crypto.dst, 
+									aop->u.crypto.dst_len))) {
 			ret = -EFAULT;
 			goto free_dst;
 		}
@@ -143,9 +140,9 @@ int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 
 	sg_init_one(&hdr_sg, h, sizeof(*h));
 	sgs[0] = &hdr_sg;
-	sg_init_one(&src_sg, h->u.crypto_op.src, sizeof(h->u.crypto_op.src_len));
+	sg_init_one(&src_sg, h->u.crypto_op.src, h->u.crypto_op.src_len);
 	sgs[1] = &src_sg;
-	sg_init_one(&dst_sg, h->u.crypto_op.dst, sizeof(h->u.crypto_op.dst_len));
+	sg_init_one(&dst_sg, h->u.crypto_op.dst, h->u.crypto_op.dst_len);
 	sgs[2] = &dst_sg;
 	/*
 	sg_init_one(&iv_sg, h->u.crypto_op.iv, sizeof(h->u.crypto_op.iv_len));
@@ -158,7 +155,12 @@ int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 	req->out_sgs = 2;
 	req->in_sgs = 2;
 
-	return 0;
+	ret = virtaccel_do_req(req);
+	if (ret != -EINPROGRESS)
+		goto free;
+	
+	req->sgs = NULL;
+	return ret;
 
 free_dst:
 	kfree(&h->u.crypto_op.dst);
@@ -192,7 +194,7 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 			req->status = VIRTIO_ACCEL_ERR;
 			goto out;
 		}
-		kfree(sess);
+		kzfree(sess);
 		break;
 	case VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION:
 		break;
@@ -201,11 +203,11 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 		op = req->priv;
 		if (unlikely(copy_to_user(op->u.crypto.dst, h->u.crypto_op.dst,
 						h->u.crypto_op.dst_len))) {
-			kfree(op);
+			kzfree(op);
 			req->status = VIRTIO_ACCEL_ERR;
 			goto out;
 		}
-		kfree(op);
+		kzfree(op);
 		break;
 	}
 
@@ -216,20 +218,32 @@ out:
 int virtaccel_do_req(struct virtio_accel_req *req)
 {
 	struct virtio_accel *va = req->vaccel;
-	int ret;
+	int ret, i, total_sg = 0;
 	unsigned long flags;
 
+	pr_debug("do_req 1\n");
 	init_completion(&req->completion);
+
+	pr_debug("do_req 2, out:%u in:%u\n", req->out_sgs, req->in_sgs);
+ 	for (i = 0; i < req->out_sgs + req->in_sgs; i++) {
+        struct scatterlist *sg;
+        for (sg = req->sgs[i]; sg; sg = sg_next(sg))
+            total_sg++;
+    }
+	pr_debug("TOTAL SGS: %u\n", total_sg);
 
 	// select vq[0] explicitly for now
 	spin_lock_irqsave(&va->vq[0].lock, flags);
+	pr_debug("do_req 3\n");
 	ret = virtqueue_add_sgs(va->vq[0].vq, req->sgs, req->out_sgs,
 			req->in_sgs, req, GFP_ATOMIC);
+	pr_debug("do_req 4\n");
 	virtqueue_kick(va->vq[0].vq);
+	pr_debug("do_req 5\n");
 	spin_unlock_irqrestore(&va->vq[0].lock, flags);
+	pr_debug("do_req 6 : %d\n", ret);
 	if (unlikely(ret < 0)) {
 		// TODO: free key etc.
-		kfree(req->sgs);
 		req->out_sgs = 0;
 		req->in_sgs = 0;
 		return ret;

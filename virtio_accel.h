@@ -1,6 +1,7 @@
 #ifndef _VIRTIO_ACCEL_H
 #define _VIRTIO_ACCEL_H
 
+#include <linux/types.h>
 #include <linux/virtio_types.h>
 
 #define VIRTIO_ID_ACCEL 21

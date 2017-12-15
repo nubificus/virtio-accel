@@ -1,6 +1,11 @@
 #ifndef _ACCEL_H
 #define _ACCEL_H
 
+#include <linux/types.h>
+#ifndef __KERNEL__
+#define __user
+#endif
+
 /* IOCTLs */
 #define ACCIOC_CRYPTO_SESS_CREATE   _IOWR('@', 0, struct accel_session)
 #define ACCIOC_CRYPTO_SESS_DESTROY  _IOR('@', 1, struct accel_session)
@@ -11,7 +16,7 @@
 struct accel_crypto_sess {
 	__u32 cipher;
 	__u32 keylen;
-	__u32 __user *key;
+	__u8 __user *key;
 };
 
 struct accel_session {

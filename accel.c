@@ -40,7 +40,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		req->priv = sess;
 		req->vaccel = vaccel;
 		ret = virtaccel_req_crypto_create_session(req);
-		if (ret < 0)
+		if (ret != -EINPROGRESS)
 			goto err_req;
 		break;
 	case ACCIOC_CRYPTO_SESS_DESTROY:
@@ -60,7 +60,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		req->priv = sess;
 		req->vaccel = vaccel;
 		ret = virtaccel_req_crypto_destroy_session(req);
-		if (ret < 0)
+		if (ret != -EINPROGRESS)
 			goto err_req;
 		break;
 	case ACCIOC_CRYPTO_ENCRYPT:
@@ -80,7 +80,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		req->priv = op;
 		req->vaccel = vaccel;
 		ret = virtaccel_req_crypto_encrypt(req);
-		if (ret < 0)
+		if (ret != -EINPROGRESS)
 			goto err_req;
 
 		break;
@@ -89,11 +89,6 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		ret = -EFAULT;
 		goto err;
 	}
-
-
-	ret = virtaccel_do_req(req);
-	if (ret != -EINPROGRESS)
-		goto err_req;
 
 	wait_for_completion(&req->completion);
 

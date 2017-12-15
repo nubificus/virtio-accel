@@ -219,7 +219,7 @@ static int virtaccel_probe(struct virtio_device *vdev)
 	u32 max_data_queues = 0, max_cipher_key_len = 0;
 	u32 max_auth_key_len = 0;
 	u64 max_size = 0;
-	
+
 	/*
 	if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
 		printk("VIRTIO PROBE NOT\n");
