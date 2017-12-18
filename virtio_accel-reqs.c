@@ -176,11 +176,15 @@ void virtaccel_clear_req(struct virtio_accel_req *req)
 	
 	switch (h->op) {
 	case VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION:
+		kzfree(h->u.crypto_sess.key);
 	case VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION:
 		kzfree((struct accel_session *)req->priv);
 		break;
 	case VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT:
 	case VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT:
+		if (h->u.crypto_op.src != h->u.crypto_op.dst)
+			kzfree(h->u.crypto_op.dst);
+		kzfree(h->u.crypto_op.src);
 		kzfree((struct accel_op *)req->priv);
 		break;
 	default:
