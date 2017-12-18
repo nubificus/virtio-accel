@@ -23,31 +23,11 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case ACCIOC_CRYPTO_SESS_CREATE:
-		req = kzalloc(sizeof(*req), GFP_KERNEL);
-		if (!req)
-			return -ENOMEM;
-		
-		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-		if (!sess)
-			return -ENOMEM;
-		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
-			kfree(sess);
-			ret = -EFAULT;
-			goto err_req;
-		}
-		
-		req->usr = arg;
-		req->priv = sess;
-		req->vaccel = vaccel;
-		ret = virtaccel_req_crypto_create_session(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-		break;
 	case ACCIOC_CRYPTO_SESS_DESTROY:
 		req = kzalloc(sizeof(*req), GFP_KERNEL);
 		if (!req)
 			return -ENOMEM;
-
+		
 		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
 		if (!sess)
 			return -ENOMEM;
@@ -56,12 +36,18 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			ret = -EFAULT;
 			goto err_req;
 		}
-		
+
+		req->usr = arg;
 		req->priv = sess;
 		req->vaccel = vaccel;
-		ret = virtaccel_req_crypto_destroy_session(req);
+
+		if (cmd == ACCIOC_CRYPTO_SESS_CREATE)
+			ret = virtaccel_req_crypto_create_session(req);
+		else
+			ret = virtaccel_req_crypto_destroy_session(req);
 		if (ret != -EINPROGRESS)
 			goto err_req;
+
 		break;
 	case ACCIOC_CRYPTO_ENCRYPT:
 	case ACCIOC_CRYPTO_DECRYPT:
@@ -77,9 +63,10 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			ret = -EFAULT;
 			goto err_req;
 		}
-	
+
 		req->priv = op;
 		req->vaccel = vaccel;
+
 		if (cmd == ACCIOC_CRYPTO_ENCRYPT)
 			ret = virtaccel_req_crypto_encrypt(req);
 		else
