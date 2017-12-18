@@ -43,7 +43,7 @@ int virtaccel_req_crypto_create_session(struct virtio_accel_req *req)
 	sgs[0] = &hdr_sg;
 	sg_init_one(&key_sg, h->u.crypto_sess.key, h->u.crypto_sess.keylen);
 	sgs[1] = &key_sg;
-	sg_init_one(&sid_sg, &h->session_id, sizeof(h->session_id));
+	sg_init_one(&sid_sg, &sess->id, sizeof(sess->id));
 	sgs[2] = &sid_sg;
 	sg_init_one(&status_sg, &req->status, sizeof(req->status));
 	sgs[3] = &status_sg;
@@ -119,19 +119,16 @@ int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 		goto free;
 	}
 
-	if (aop->u.crypto.src != aop->u.crypto.dst) {
+	if (aop->u.crypto.src_len != aop->u.crypto.dst_len) {
+		pr_debug("crypto op src_len != dst_len\n");
 		h->u.crypto_op.dst = kzalloc_node(aop->u.crypto.dst_len, GFP_ATOMIC,
 								dev_to_node(&vaccel->vdev->dev));
 		if (!h->u.crypto_op.dst) {
 			ret = -ENOMEM;
-			goto free;
-		}
-		
-		if (unlikely(copy_from_user(h->u.crypto_op.dst, aop->u.crypto.dst, 
-									aop->u.crypto.dst_len))) {
-			ret = -EFAULT;
 			goto free_dst;
 		}
+	} else {
+		h->u.crypto_op.dst = h->u.crypto_op.src;
 	}
 
 	// TODO: IV
@@ -140,6 +137,8 @@ int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 	h->u.crypto_op.src_len = cpu_to_virtio32(vdev, aop->u.crypto.src_len);
 	h->u.crypto_op.dst_len = cpu_to_virtio32(vdev, aop->u.crypto.dst_len);
 
+	pr_debug("crypto op src_len: %u, dst_len: %u\n", h->u.crypto_op.src_len,
+				h->u.crypto_op.dst_len);
 	sg_init_one(&hdr_sg, h, sizeof(*h));
 	sgs[0] = &hdr_sg;
 	sg_init_one(&src_sg, h->u.crypto_op.src, h->u.crypto_op.src_len);
@@ -165,17 +164,34 @@ int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 	return ret;
 
 free_dst:
-	kfree(&h->u.crypto_op.dst);
+	kzfree(&h->u.crypto_op.dst);
 free:
-	kfree(&h->u.crypto_op.src);
+	kzfree(&h->u.crypto_op.src);
 	return ret;
 }
 
 void virtaccel_clear_req(struct virtio_accel_req *req)
 {
-	if (req) {
-		kzfree(req->vaccel);
+	struct virtio_accel_hdr *h = &req->hdr;
+	
+	switch (h->op) {
+	case VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION:
+	case VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION:
+		kzfree((struct accel_session *)req->priv);
+		break;
+	case VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT:
+	case VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT:
+		kzfree((struct accel_op *)req->priv);
+		break;
+	default:
+		pr_err("clear req: invalid op returned\n");
+		break;
 	}
+
+	req->sgs = NULL;
+	req->usr = NULL;
+	req->out_sgs = 0;
+	req->in_sgs = 0;
 }
 
 void virtaccel_handle_req_result(struct virtio_accel_req *req)
@@ -187,15 +203,14 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 	if (req->status != VIRTIO_ACCEL_OK)
 		goto out;
 
-	switch (req->hdr.op) {
+	switch (h->op) {
 	case VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION:
 		sess = req->priv;
 		if (unlikely(copy_to_user(req->usr, sess, sizeof(*sess)))) {
-			kfree(sess);
+			pr_err("handle req: create session copy failed\n");
 			req->status = VIRTIO_ACCEL_ERR;
 			goto out;
 		}
-		kzfree(sess);
 		break;
 	case VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION:
 		break;
@@ -204,17 +219,18 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 		op = req->priv;
 		if (unlikely(copy_to_user(op->u.crypto.dst, h->u.crypto_op.dst,
 						h->u.crypto_op.dst_len))) {
-			kzfree(op);
+			pr_err("handle req: op copy failed\n");
 			req->status = VIRTIO_ACCEL_ERR;
 			goto out;
 		}
-		kzfree(op);
+		break;
+	default:
+		pr_err("hadle req: invalid op returned\n");
 		break;
 	}
 
 out:
-	complete(&req->completion);
-	virtaccel_clear_req(req);
+	return;
 }
 
 int virtaccel_do_req(struct virtio_accel_req *req)
@@ -223,31 +239,25 @@ int virtaccel_do_req(struct virtio_accel_req *req)
 	int ret, i, total_sg = 0;
 	unsigned long flags;
 
-	pr_debug("do_req 1\n");
 	init_completion(&req->completion);
-
-	pr_debug("do_req 2, out:%u in:%u\n", req->out_sgs, req->in_sgs);
+/*
  	for (i = 0; i < req->out_sgs + req->in_sgs; i++) {
         struct scatterlist *sg;
         for (sg = req->sgs[i]; sg; sg = sg_next(sg))
             total_sg++;
     }
 	pr_debug("TOTAL SGS: %u\n", total_sg);
-
+*/
 	// select vq[0] explicitly for now
 	spin_lock_irqsave(&va->vq[0].lock, flags);
-	pr_debug("do_req 3\n");
 	ret = virtqueue_add_sgs(va->vq[0].vq, req->sgs, req->out_sgs,
 			req->in_sgs, req, GFP_ATOMIC);
-	pr_debug("do_req 4\n");
 	virtqueue_kick(va->vq[0].vq);
-	pr_debug("do_req 5\n");
 	spin_unlock_irqrestore(&va->vq[0].lock, flags);
-	pr_debug("do_req 6 : %d\n", ret);
+	pr_debug("do_req ret: %d\n", ret);
 	if (unlikely(ret < 0)) {
 		// TODO: free key etc.
-		req->out_sgs = 0;
-		req->in_sgs = 0;
+		virtaccel_clear_req(req);
 		return ret;
 	}
 

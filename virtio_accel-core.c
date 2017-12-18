@@ -42,26 +42,29 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
+			pr_debug("dataq callback: status=%u\n", req->status);
 			switch (req->status) {
 			case VIRTIO_ACCEL_OK:
-				error = 0;
+
+				req->ret = 0;
 				break;
 			case VIRTIO_ACCEL_INVSESS:
 			case VIRTIO_ACCEL_ERR:
-				error = -EINVAL;
+				req->ret = -EINVAL;
 				break;
 			case VIRTIO_ACCEL_BADMSG:
-				error = -EBADMSG;
+				req->ret = -EBADMSG;
 				break;
 			default:
-				error = -EIO;
+				req->ret = -EIO;
 				break;
 			}
 			
 			spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
 			/* Finish the encrypt or decrypt process */
 			virtaccel_handle_req_result(req);
-			complete(&req->completion);
+			complete_all(&req->completion);
+			virtaccel_clear_req(req);
 			spin_lock_irqsave(&vaccel->vq[qid].lock, flags);
 		}
 	} while (!virtqueue_enable_cb(vq));

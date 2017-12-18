@@ -64,6 +64,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			goto err_req;
 		break;
 	case ACCIOC_CRYPTO_ENCRYPT:
+	case ACCIOC_CRYPTO_DECRYPT:
 		req = kzalloc(sizeof(*req), GFP_KERNEL);
 		if (!req)
 			return -ENOMEM;
@@ -79,7 +80,10 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	
 		req->priv = op;
 		req->vaccel = vaccel;
-		ret = virtaccel_req_crypto_encrypt(req);
+		if (cmd == ACCIOC_CRYPTO_ENCRYPT)
+			ret = virtaccel_req_crypto_encrypt(req);
+		else
+			ret = virtaccel_req_crypto_decrypt(req);
 		if (ret != -EINPROGRESS)
 			goto err_req;
 
@@ -90,12 +94,17 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		goto err;
 	}
 
+	pr_debug("Waiting to complete request\n");
 	wait_for_completion(&req->completion);
+	reinit_completion(&req->completion);
+	pr_debug("Completed request\n");
 
-	return req->status;
+	ret = req->ret;
+	kzfree(req);	
+	return ret;
 
 err_req:
-	kfree(req);
+	kzfree(req);
 err:
 	return ret;
 }

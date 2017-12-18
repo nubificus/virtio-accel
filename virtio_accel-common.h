@@ -37,8 +37,9 @@ struct virtio_accel_req {
 	unsigned int in_sgs;
 	void *priv;
 	void __user *usr;
-	u32 status;
 	struct completion completion;
+	u32 status;
+	int ret;
 };
 
 struct virtio_accel_file {
