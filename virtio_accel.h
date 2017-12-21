@@ -37,29 +37,43 @@ struct virtio_accel_crypto_op {
 	__u8 padding;
 };
 
+struct virtio_accel_gen_op {
+	__virtio32 in_nr;
+	__virtio32 out_nr;
+	__virtio32 in_size;
+	__virtio32 out_size;
+	__u8 *in;
+	__u8 *out;
+	__u8 padding[6];
+};
+
 struct virtio_accel_hdr {
 	__virtio32 session_id;
 
 #define VIRTIO_ACCEL_NO_OP                        0
-#define VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION   1
-#define VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION  2
-#define VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT          3
-#define VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT          4
-#define VIRTIO_ACCEL_C_OP_HASH_CREATE_SESSION     5
-#define VIRTIO_ACCEL_C_OP_MAC_CREATE_SESSION      6
-#define VIRTIO_ACCEL_C_OP_AEAD_CREATE_SESSION     7
-#define VIRTIO_ACCEL_C_OP_HASH_DESTROY_SESSION    8
-#define VIRTIO_ACCEL_C_OP_MAC_DESTROY_SESSION     9
-#define VIRTIO_ACCEL_C_OP_AEAD_DESTROY_SESSION   10
-#define VIRTIO_ACCEL_C_OP_HASH                   11
-#define VIRTIO_ACCEL_C_OP_MAC                    12
-#define VIRTIO_ACCEL_C_OP_AEAD_ENCRYPT           13
-#define VIRTIO_ACCEL_C_OP_AEAD_DECRYPT           14
+#define VIRTIO_ACCEL_G_OP_CREATE_SESSION          1
+#define VIRTIO_ACCEL_G_OP_DESTROY_SESSION         2
+#define VIRTIO_ACCEL_G_OP_DO_OP                   3
+#define VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION   4
+#define VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION  5
+#define VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT          6
+#define VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT          7
+#define VIRTIO_ACCEL_C_OP_HASH_CREATE_SESSION     8
+#define VIRTIO_ACCEL_C_OP_MAC_CREATE_SESSION      9
+#define VIRTIO_ACCEL_C_OP_AEAD_CREATE_SESSION    10
+#define VIRTIO_ACCEL_C_OP_HASH_DESTROY_SESSION   11
+#define VIRTIO_ACCEL_C_OP_MAC_DESTROY_SESSION    12
+#define VIRTIO_ACCEL_C_OP_AEAD_DESTROY_SESSION   13
+#define VIRTIO_ACCEL_C_OP_HASH                   14
+#define VIRTIO_ACCEL_C_OP_MAC                    15
+#define VIRTIO_ACCEL_C_OP_AEAD_ENCRYPT           16
+#define VIRTIO_ACCEL_C_OP_AEAD_DECRYPT           17
 	__virtio32 op;
 	/* session create structs */
 	union {
 		struct virtio_accel_crypto_sess crypto_sess;
 		struct virtio_accel_crypto_op crypto_op;
+		struct virtio_accel_gen_op gen_op;
 	} u;
 };
 

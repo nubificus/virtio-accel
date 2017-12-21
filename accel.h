@@ -7,10 +7,13 @@
 #endif
 
 /* IOCTLs */
-#define ACCIOC_CRYPTO_SESS_CREATE   _IOWR('@', 0, struct accel_session)
-#define ACCIOC_CRYPTO_SESS_DESTROY  _IOR('@', 1, struct accel_session)
-#define ACCIOC_CRYPTO_ENCRYPT       _IOWR('@', 2, struct accel_op)
-#define ACCIOC_CRYPTO_DECRYPT       _IOWR('@', 3, struct accel_op)
+#define ACCIOC_GEN_SESS_CREATE      _IOWR('@', 0, struct accel_session)
+#define ACCIOC_GEN_SESS_DESTROY     _IOWR('@', 1, struct accel_session)
+#define ACCIOC_GEN_DO_OP            _IOWR('@', 2, struct accel_op)
+#define ACCIOC_CRYPTO_SESS_CREATE   _IOWR('@', 3, struct accel_session)
+#define ACCIOC_CRYPTO_SESS_DESTROY  _IOR('@', 4, struct accel_session)
+#define ACCIOC_CRYPTO_ENCRYPT       _IOWR('@', 5, struct accel_op)
+#define ACCIOC_CRYPTO_DECRYPT       _IOWR('@', 6, struct accel_op)
 
 
 struct accel_crypto_sess {
@@ -19,10 +22,20 @@ struct accel_crypto_sess {
 	__u8 __user *key;
 };
 
+struct accel_gen_op {
+	__u32 in_nr;
+	__u32 out_nr;
+	__u32 in_size;
+	__u32 out_size;
+	__u8 __user *in;
+	__u8 __user *out;
+};
+
 struct accel_session {
 	__u32 id;
 	union {
 		struct accel_crypto_sess crypto;
+		struct accel_gen_op gen;
 	} u;
 };
 
@@ -39,6 +52,7 @@ struct accel_op {
 	__u32 session_id;
 	union {
 		struct accel_crypto_op crypto;
+		struct accel_gen_op gen;
 	} u;
 };
 

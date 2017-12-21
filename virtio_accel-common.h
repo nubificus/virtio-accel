@@ -64,14 +64,16 @@ void virtaccel_dev_stop(struct virtio_accel *vcrypto);
 int virtaccel_req_crypto_create_session(struct virtio_accel_req *req);
 int virtaccel_req_crypto_destroy_session(struct virtio_accel_req *req);
 int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode);
+#define virtaccel_req_crypto_encrypt(a) \
+	virtaccel_req_crypto_operation(a, VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT)
+#define virtaccel_req_crypto_decrypt(a) \
+	virtaccel_req_crypto_operation(a, VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT)
+
+int virtaccel_req_gen_create_session(struct virtio_accel_req *req);
+int virtaccel_req_gen_destroy_session(struct virtio_accel_req *req);
+int virtaccel_req_gen_operation(struct virtio_accel_req *req);
 void virtaccel_clear_req(struct virtio_accel_req *req);
 void virtaccel_handle_req_result(struct virtio_accel_req *req);
 int virtaccel_do_req(struct virtio_accel_req *req);
-
-#define virtaccel_req_crypto_encrypt(a) \
-	virtaccel_req_crypto_operation(a, VIRTIO_ACCEL_C_OP_CIPHER_ENCRYPT)
-
-#define virtaccel_req_crypto_decrypt(a) \
-	virtaccel_req_crypto_operation(a, VIRTIO_ACCEL_C_OP_CIPHER_DECRYPT)
 
 #endif /* _VIRTIO_ACCEL_COMMON_H */

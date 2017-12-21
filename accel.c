@@ -75,16 +75,64 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			goto err_req;
 
 		break;
+	case ACCIOC_GEN_SESS_CREATE:
+	case ACCIOC_GEN_SESS_DESTROY:
+		req = kzalloc(sizeof(*req), GFP_KERNEL);
+		if (!req)
+			return -ENOMEM;
+		
+		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
+		if (!sess)
+			return -ENOMEM;
+		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
+			kfree(sess);
+			ret = -EFAULT;
+			goto err_req;
+		}
+
+		req->usr = arg;
+		req->priv = sess;
+		req->vaccel = vaccel;
+		
+		if (cmd == ACCIOC_GEN_SESS_CREATE)
+			ret = virtaccel_req_gen_create_session(req);
+		else
+			ret = virtaccel_req_gen_destroy_session(req);
+		
+		break;
+	case ACCIOC_GEN_DO_OP:
+		req = kzalloc(sizeof(*req), GFP_KERNEL);
+		if (!req)
+			return -ENOMEM;
+		
+		op = kzalloc(sizeof(*op), GFP_KERNEL);
+		if (!op)
+			return -ENOMEM;
+		if (unlikely(copy_from_user(op, arg, sizeof(*op)))) {
+			kfree(op);
+			ret = -EFAULT;
+			goto err_req;
+		}
+
+		req->usr = arg;
+		req->priv = op;
+		req->vaccel = vaccel;
+		
+		ret = virtaccel_req_gen_operation(req);
+		if (ret != -EINPROGRESS)
+			goto err_req;
+
+		break;
 	default:
 		pr_err("Invalid IOCTL\n");
 		ret = -EFAULT;
 		goto err;
 	}
 
-	pr_debug("Waiting to complete request\n");
+	pr_debug("Waiting for request to complete\n");
 	wait_for_completion(&req->completion);
 	reinit_completion(&req->completion);
-	pr_debug("Completed request\n");
+	pr_debug("Request completed\n");
 
 	ret = req->ret;
 	kzfree(req);	
