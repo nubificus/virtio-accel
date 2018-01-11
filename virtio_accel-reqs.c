@@ -172,35 +172,45 @@ free:
 
 int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 {
-	struct scatterlist hdr_sg, in_sg, out_sg, sid_sg, status_sg, *sgs[5];
+	struct scatterlist hdr_sg, in_sg, out_sg, sid_sg, status_sg, **sgs;
 	struct virtio_accel *vaccel = req->vaccel;
 	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess = req->priv;
-	int ret;
+	int ret, out_nsgs = 0, in_nsgs = 0, total_sgs = 3;
 
 	h->op = cpu_to_virtio32(vdev, VIRTIO_ACCEL_G_OP_CREATE_SESSION);
 
-	h->u.gen_op.in = kzalloc_node(sess->u.gen.in_size, GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
-	if (!h->u.gen_op.in)
-		return -ENOMEM;
-	
-	if (unlikely(copy_from_user(h->u.gen_op.in, sess->u.gen.in, 
-								sess->u.gen.in_size))) {
-		ret = -EFAULT;
-		goto free;
+	h->u.gen_op.in = NULL;
+	if (sess->u.gen.in_size > 0) {
+		total_sgs++;
+		h->u.gen_op.in = kzalloc_node(sess->u.gen.in_size, GFP_ATOMIC,
+							dev_to_node(&vaccel->vdev->dev));
+		if (!h->u.gen_op.in)
+			return -ENOMEM;
+		
+		if (unlikely(copy_from_user(h->u.gen_op.in, sess->u.gen.in, 
+									sess->u.gen.in_size))) {
+			ret = -EFAULT;
+			goto free;
+		}
 	}
 
-	h->u.gen_op.out = kzalloc_node(sess->u.gen.out_size, GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
-	if (!h->u.gen_op.out)
-		return -ENOMEM;
-	
-	if (unlikely(copy_from_user(h->u.gen_op.out, sess->u.gen.out, 
-								sess->u.gen.out_size))) {
-		ret = -EFAULT;
-		goto free_out;
+	h->u.gen_op.out = NULL;
+	if (sess->u.gen.out_size > 0) {
+		total_sgs++;
+		h->u.gen_op.out = kzalloc_node(sess->u.gen.out_size, GFP_ATOMIC,
+							dev_to_node(&vaccel->vdev->dev));
+		if (!h->u.gen_op.out) {
+			ret = -ENOMEM;
+			goto free;
+		}
+		
+		if (unlikely(copy_from_user(h->u.gen_op.out, sess->u.gen.out, 
+									sess->u.gen.out_size))) {
+			ret = -EFAULT;
+			goto free_out;
+		}
 	}
 
 	h->u.gen_op.in_nr = cpu_to_virtio32(vdev, sess->u.gen.in_nr);
@@ -211,32 +221,45 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	pr_debug("op: %d, in_nr: %u, out_nr: %u, in_size: %u, out_size: %u\n",
 				h->op, h->u.gen_op.in_nr, h->u.gen_op.out_nr, 
 				h->u.gen_op.in_size, h->u.gen_op.out_size);
+	
+	sgs = kzalloc_node(total_sgs * sizeof(*sgs), GFP_ATOMIC,
+						dev_to_node(&vaccel->vdev->dev));
+	if (!sgs) {
+		ret = -EFAULT;
+		goto free_out;
+	}
+
 	sg_init_one(&hdr_sg, h, sizeof(*h));
-	sgs[0] = &hdr_sg;
-	sg_init_one(&out_sg, h->u.gen_op.out, h->u.gen_op.out_size);
-	sgs[1] = &out_sg;
-	sg_init_one(&in_sg, h->u.gen_op.in, h->u.gen_op.in_size);
-	sgs[2] = &in_sg;
+	sgs[out_nsgs++] = &hdr_sg;
+	if (sess->u.gen.out_size > 0) {
+		sg_init_one(&out_sg, h->u.gen_op.out, h->u.gen_op.out_size);
+		sgs[out_nsgs++] = &out_sg;
+	}
+	if (sess->u.gen.in_size > 0) {
+		sg_init_one(&in_sg, h->u.gen_op.in, h->u.gen_op.in_size);
+		sgs[out_nsgs + in_nsgs++] = &in_sg;
+	}
 	sg_init_one(&sid_sg, &sess->id, sizeof(sess->id));
-	sgs[3] = &sid_sg;
+	sgs[out_nsgs + in_nsgs++] = &sid_sg;
 	sg_init_one(&status_sg, &req->status, sizeof(req->status));
-	sgs[4] = &status_sg;
+	sgs[out_nsgs + in_nsgs++] = &status_sg;
 	
 	req->sgs = sgs;
-	req->out_sgs = 2;
-	req->in_sgs = 3;
+	req->out_sgs = out_nsgs;
+	req->in_sgs = in_nsgs;
 
 	ret = virtaccel_do_req(req);
 	if (ret != -EINPROGRESS)
-		goto free;
+		goto free_out;
 
-	req->sgs = NULL;
 	return ret;
 
 free_out:
-	kzfree(h->u.gen_op.out);
+	if (h->u.gen_op.out != NULL)
+		kzfree(h->u.gen_op.out);
 free:
-	kzfree(h->u.gen_op.in);
+	if (h->u.gen_op.in != NULL)
+		kzfree(h->u.gen_op.in);
 	return ret;
 }
 
@@ -274,35 +297,45 @@ free:
 
 int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 {
-	struct scatterlist hdr_sg, in_sg, out_sg, status_sg, *sgs[4];
+	struct scatterlist hdr_sg, in_sg, out_sg, status_sg, **sgs;
 	struct virtio_accel *vaccel = req->vaccel;
 	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_op *op = req->priv;
-	int ret;
+	int ret, out_nsgs = 0, in_nsgs = 0, total_sgs = 2;
 
 	h->op = cpu_to_virtio32(vdev, VIRTIO_ACCEL_G_OP_DO_OP);
 
-	h->u.gen_op.in = kzalloc_node(op->u.gen.in_size, GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
-	if (!h->u.gen_op.in)
-		return -ENOMEM;
-	
-	if (unlikely(copy_from_user(h->u.gen_op.in, op->u.gen.in, 
-								op->u.gen.in_size))) {
-		ret = -EFAULT;
-		goto free;
+	h->u.gen_op.in = NULL;
+	if (op->u.gen.in_size > 0) {
+		total_sgs++;
+		h->u.gen_op.in = kzalloc_node(op->u.gen.in_size, GFP_ATOMIC,
+							dev_to_node(&vaccel->vdev->dev));
+		if (!h->u.gen_op.in)
+			return -ENOMEM;
+		
+		if (unlikely(copy_from_user(h->u.gen_op.in, op->u.gen.in,
+									op->u.gen.in_size))) {
+			ret = -EFAULT;
+			goto free;
+		}
 	}
 
-	h->u.gen_op.out = kzalloc_node(op->u.gen.out_size, GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
-	if (!h->u.gen_op.out)
-		return -ENOMEM;
-	
-	if (unlikely(copy_from_user(h->u.gen_op.out, op->u.gen.out, 
-								op->u.gen.out_size))) {
-		ret = -EFAULT;
-		goto free_out;
+	h->u.gen_op.out = NULL;
+	if (op->u.gen.out_size > 0) {
+		total_sgs++;
+		h->u.gen_op.out = kzalloc_node(op->u.gen.out_size, GFP_ATOMIC,
+							dev_to_node(&vaccel->vdev->dev));
+		if (!h->u.gen_op.out) {
+			ret = -ENOMEM;
+			goto free;
+		}
+
+		if (unlikely(copy_from_user(h->u.gen_op.out, op->u.gen.out, 
+									op->u.gen.out_size))) {
+			ret = -EFAULT;
+			goto free_out;
+		}
 	}
 
 	h->u.gen_op.in_nr = cpu_to_virtio32(vdev, op->u.gen.in_nr);
@@ -313,30 +346,43 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 	pr_debug("op: %d, in_nr: %u, out_nr: %u, in_size: %u, out_size: %u\n",
 				h->op, h->u.gen_op.in_nr, h->u.gen_op.out_nr, 
 				h->u.gen_op.in_size, h->u.gen_op.out_size);
+	
+	sgs = kzalloc_node(total_sgs * sizeof(*sgs), GFP_ATOMIC,
+						dev_to_node(&vaccel->vdev->dev));
+	if (!sgs) {
+		ret = -EFAULT;
+		goto free_out;
+	}
+
 	sg_init_one(&hdr_sg, h, sizeof(*h));
-	sgs[0] = &hdr_sg;
-	sg_init_one(&out_sg, h->u.gen_op.out, h->u.gen_op.out_size);
-	sgs[1] = &out_sg;
-	sg_init_one(&in_sg, h->u.gen_op.in, h->u.gen_op.in_size);
-	sgs[2] = &in_sg;
+	sgs[out_nsgs++] = &hdr_sg;
+	if (op->u.gen.out_size > 0) {
+		sg_init_one(&out_sg, h->u.gen_op.out, h->u.gen_op.out_size);
+		sgs[out_nsgs++] = &out_sg;
+	}
+	if (op->u.gen.in_size > 0) {
+		sg_init_one(&in_sg, h->u.gen_op.in, h->u.gen_op.in_size);
+		sgs[out_nsgs + in_nsgs++] = &in_sg;
+	}
 	sg_init_one(&status_sg, &req->status, sizeof(req->status));
-	sgs[3] = &status_sg;
+	sgs[out_nsgs + in_nsgs++] = &status_sg;
 	
 	req->sgs = sgs;
-	req->out_sgs = 2;
-	req->in_sgs = 2;
+	req->out_sgs = out_nsgs;
+	req->in_sgs = in_nsgs;
 
 	ret = virtaccel_do_req(req);
 	if (ret != -EINPROGRESS)
 		goto free;
 
-	req->sgs = NULL;
 	return ret;
 
 free_out:
-	kzfree(h->u.gen_op.out);
+	if (h->u.gen_op.out != NULL)
+		kzfree(h->u.gen_op.out);
 free:
-	kzfree(h->u.gen_op.in);
+	if (h->u.gen_op.in != NULL)
+		kzfree(h->u.gen_op.in);
 	return ret;
 }
 
@@ -355,6 +401,23 @@ void virtaccel_clear_req(struct virtio_accel_req *req)
 		if (h->u.crypto_op.src != h->u.crypto_op.dst)
 			kzfree(h->u.crypto_op.dst);
 		kzfree(h->u.crypto_op.src);
+		kzfree((struct accel_op *)req->priv);
+		break;
+	case VIRTIO_ACCEL_G_OP_CREATE_SESSION:
+		if (h->u.gen_op.out != NULL)
+			kzfree(h->u.gen_op.out);
+		if (h->u.gen_op.in != NULL)
+			kzfree(h->u.gen_op.in);
+		kfree(req->sgs);
+	case VIRTIO_ACCEL_G_OP_DESTROY_SESSION:
+		kzfree((struct accel_session *)req->priv);
+		break;
+	case VIRTIO_ACCEL_G_OP_DO_OP:
+		if (h->u.gen_op.out != NULL)
+			kzfree(h->u.gen_op.out);
+		if (h->u.gen_op.in != NULL)
+			kzfree(h->u.gen_op.in);
+		kfree(req->sgs);
 		kzfree((struct accel_op *)req->priv);
 		break;
 	default:
