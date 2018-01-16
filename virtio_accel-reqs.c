@@ -461,6 +461,25 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 			goto out;
 		}
 		break;
+	case VIRTIO_ACCEL_G_OP_CREATE_SESSION:
+		sess = req->priv;
+		if (unlikely(copy_to_user(req->usr, sess, sizeof(*sess)))) {
+			pr_err("handle req: create session copy failed\n");
+			req->status = VIRTIO_ACCEL_ERR;
+			goto out;
+		}
+		break;
+	case VIRTIO_ACCEL_G_OP_DESTROY_SESSION:
+		break;
+	case VIRTIO_ACCEL_G_OP_DO_OP:
+		op = req->priv;
+		if (unlikely(copy_to_user(op->u.gen.in, h->u.gen_op.in,
+						h->u.gen_op.in_size))) {
+			pr_err("handle req: op copy failed\n");
+			req->status = VIRTIO_ACCEL_ERR;
+			goto out;
+		}
+		break;
 	default:
 		pr_err("hadle req: invalid op returned\n");
 		break;
