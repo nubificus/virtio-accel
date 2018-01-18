@@ -37,14 +37,17 @@ struct virtio_accel_crypto_op {
 	__u8 padding;
 };
 
+struct virtio_accel_gen_op_arg {
+	__virtio32 len;
+	__u8 *buf;
+	__u8 padding[3];
+};
+
 struct virtio_accel_gen_op {
 	__virtio32 in_nr;
 	__virtio32 out_nr;
-	__virtio32 in_size;
-	__virtio32 out_size;
-	__u8 *in;
-	__u8 *out;
-	__u8 padding[6];
+	struct virtio_accel_gen_op_arg *in;
+	struct virtio_accel_gen_op_arg *out;
 };
 
 struct virtio_accel_hdr {

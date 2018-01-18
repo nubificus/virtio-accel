@@ -22,13 +22,16 @@ struct accel_crypto_sess {
 	__u8 __user *key;
 };
 
+struct accel_gen_op_arg {
+	__u32 len;
+	__u8 *buf;
+};
+
 struct accel_gen_op {
 	__u32 in_nr;
 	__u32 out_nr;
-	__u32 in_size;
-	__u32 out_size;
-	__u8 __user *in;
-	__u8 __user *out;
+	struct accel_gen_op_arg __user *in;
+	struct accel_gen_op_arg __user *out;
 };
 
 struct accel_session {

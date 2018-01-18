@@ -130,7 +130,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	}
 
 	pr_debug("Waiting for request to complete\n");
-	wait_for_completion(&req->completion);
+	wait_for_completion_interruptible(&req->completion);
 	reinit_completion(&req->completion);
 	pr_debug("Request completed\n");
 
