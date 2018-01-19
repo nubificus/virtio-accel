@@ -172,7 +172,7 @@ free:
 
 int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 {
-	struct scatterlist hdr_sg, in_sg, out_sg, sid_sg, status_sg, **sgs;
+	struct scatterlist hdr_sg, *sg, sid_sg, status_sg, **sgs;
 	struct virtio_accel *vaccel = req->vaccel;
 	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
@@ -185,7 +185,6 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	h->u.gen_op.in_nr = cpu_to_virtio32(vdev, gen->in_nr);
 	h->u.gen_op.out_nr = cpu_to_virtio32(vdev, gen->out_nr);
 
-	h->u.gen_op.in = NULL;
 	if (h->u.gen_op.in_nr > 0) {
 		h->u.gen_op.in = kzalloc_node(gen->in_nr * sizeof(*gen->in),
 								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
@@ -195,7 +194,6 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 		if (unlikely(copy_from_user(h->u.gen_op.in, gen->in,
 							gen->in_nr * sizeof(*gen->in)))) {
 			ret = -EFAULT;
-			h->u.gen_op.in[0].buf = NULL;
 			goto free;
 		}
 
@@ -205,20 +203,18 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 											GFP_ATOMIC,
 											dev_to_node(&vaccel->vdev->dev));
 			if (!h->u.gen_op.in[i].buf) {
-				h->u.gen_op.in[i].buf = NULL;
 				ret = -ENOMEM;
 				goto free;
 			}
 			if (unlikely(copy_from_user(h->u.gen_op.in[i].buf, gen->in[i].buf,
 								gen->in[i].len))) {
-				h->u.gen_op.in[i+1].buf = NULL;
 				ret = -EFAULT;
 				goto free;
 			}
+			h->u.gen_op.in[i].len = cpu_to_virtio32(vdev, gen->in[i].len);
 		}
 	}
 
-	h->u.gen_op.out = NULL;
 	if (h->u.gen_op.out_nr > 0) {
 		h->u.gen_op.out = kzalloc_node(gen->out_nr * sizeof(*gen->out),
 								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
@@ -230,7 +226,6 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 		if (unlikely(copy_from_user(h->u.gen_op.out, gen->out,
 							gen->out_nr * sizeof(*gen->out)))) {
 			ret = -EFAULT;
-			h->u.gen_op.out[0].buf = NULL;
 			goto free_out;
 		}
 
@@ -240,24 +235,22 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 											GFP_ATOMIC,
 											dev_to_node(&vaccel->vdev->dev));
 			if (!h->u.gen_op.out[i].buf) {
-				h->u.gen_op.in[i].buf = NULL;
 				ret = -ENOMEM;
 				goto free_out;
 			}
 			if (unlikely(copy_from_user(h->u.gen_op.out[i].buf, gen->out[i].buf,
 								gen->out[i].len))) {
-				h->u.gen_op.in[i+1].buf = NULL;
 				ret = -EFAULT;
 				goto free_out;
 			}
 		}
 	}
-	
+
 	pr_debug("op: %d, in_nr: %u, out_nr: %u\n",
 			h->op, h->u.gen_op.in_nr, h->u.gen_op.out_nr);
 	
 	sgs = kzalloc_node(total_sgs * sizeof(*sgs), GFP_ATOMIC,
-				dev_to_node(&vaccel->vdev->dev));
+						dev_to_node(&vaccel->vdev->dev));
 	if (!sgs) {
 		ret = -EFAULT;
 		goto free_out;
@@ -266,12 +259,24 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	sg_init_one(&hdr_sg, h, sizeof(*h));
 	sgs[out_nsgs++] = &hdr_sg;
 	for (i = 0; i < h->u.gen_op.out_nr; i++) {
-		sg_init_one(&out_sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
-		sgs[out_nsgs++] = &out_sg;
+		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
+						dev_to_node(&vaccel->vdev->dev));
+		if (!sg) {
+			ret = -ENOMEM;
+			goto free_sgs;
+		}	
+		sg_init_one(sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
+		sgs[out_nsgs++] = sg;
 	}
-	for (i = 0; i < h->u.gen_op.in_nr; i++) {
-		sg_init_one(&in_sg, h->u.gen_op.in[i].buf, h->u.gen_op.in[i].len);
-		sgs[out_nsgs + in_nsgs++] = &in_sg;
+	for (i = 0; i < h->u.gen_op.out_nr; i++) {
+		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
+						dev_to_node(&vaccel->vdev->dev));
+		if (!sg) {
+			ret = -ENOMEM;
+			goto free_sgs;
+		}	
+		sg_init_one(sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
+		sgs[out_nsgs + in_nsgs++] = sg;
 	}
 	sg_init_one(&sid_sg, &sess->id, sizeof(sess->id));
 	sgs[out_nsgs + in_nsgs++] = &sid_sg;
@@ -283,28 +288,33 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	req->in_sgs = in_nsgs;
 
 	ret = virtaccel_do_req(req);
-	if (ret != -EINPROGRESS)
-		goto free_out;
+	if (ret != -EINPROGRESS) {
+		in_nsgs--;
+		goto free_sgs;
+	}
 
 	return ret;
 
+free_sgs:
+	for (i = 1; i < (out_nsgs + in_nsgs); i++) {
+		if (sgs[i])
+			kfree(sgs[i]);
+	}
 free_out:
-	if (h->u.gen_op.out != NULL) {
-		for (i = 0; i <= h->u.gen_op.out_nr; i++) {
-			if (h->u.gen_op.out[i].buf == NULL)
-				break;
-			kfree(h->u.gen_op.out[i].buf);
+	if (h->u.gen_op.out) {
+		for (i = 0; i < h->u.gen_op.out_nr; i++) {
+			if (h->u.gen_op.out[i].buf)
+				kzfree(h->u.gen_op.out[i].buf);
 		}
-		kzfree(h->u.gen_op.out);
+		kfree(h->u.gen_op.out);
 	}
 free:
-	if (h->u.gen_op.in != NULL) {
-		for (i = 0; i <= h->u.gen_op.in_nr; i++) {
-			if (h->u.gen_op.in[i].buf == NULL)
-				break;
-			kfree(h->u.gen_op.in[i].buf);
+	if (h->u.gen_op.in) {
+		for (i = 0; i < h->u.gen_op.in_nr; i++) {
+			if (h->u.gen_op.in[i].buf)
+				kzfree(h->u.gen_op.in[i].buf);
 		}
-		kzfree(h->u.gen_op.in);
+		kfree(h->u.gen_op.in);
 	}
 	return ret;
 }
@@ -471,21 +481,19 @@ free_sgs:
 	}
 free_out:
 	if (h->u.gen_op.out) {
-		for (i = 0; i <= h->u.gen_op.out_nr; i++) {
-			if (h->u.gen_op.out[i].buf == NULL)
-				break;
-			kfree(h->u.gen_op.out[i].buf);
+		for (i = 0; i <  h->u.gen_op.out_nr; i++) {
+			if (h->u.gen_op.out[i].buf)
+				kzfree(h->u.gen_op.out[i].buf);
 		}
-		kzfree(h->u.gen_op.out);
+		kfree(h->u.gen_op.out);
 	}
 free:
 	if (h->u.gen_op.in) {
-		for (i = 0; i <= h->u.gen_op.in_nr; i++) {
-			if (h->u.gen_op.in[i].buf == NULL)
-				break;
-			kfree(h->u.gen_op.in[i].buf);
+		for (i = 0; i < h->u.gen_op.in_nr; i++) {
+			if (h->u.gen_op.in[i].buf)
+				kzfree(h->u.gen_op.in[i].buf);
 		}
-		kzfree(h->u.gen_op.in);
+		kfree(h->u.gen_op.in);
 	}
 	return ret;
 }
@@ -509,45 +517,49 @@ void virtaccel_clear_req(struct virtio_accel_req *req)
 		kzfree((struct accel_op *)req->priv);
 		break;
 	case VIRTIO_ACCEL_G_OP_CREATE_SESSION:
-/*		if (h->u.gen_op.out != NULL) {
-			for (i = 0; i <= h->u.gen_op.out_nr; i++) {
-				if (h->u.gen_op.out[i].buf == NULL)
-					break;
-				kfree(h->u.gen_op.out[i].buf);
+		if (h->u.gen_op.out) {
+			for (i = 0; i < h->u.gen_op.out_nr; i++) {
+				if (h->u.gen_op.out[i].buf)
+					kzfree(h->u.gen_op.out[i].buf);
 			}
-			kzfree(h->u.gen_op.out);
+			kfree(h->u.gen_op.out);
 		}
-		if (h->u.gen_op.in != NULL) {
-			for (i = 0; i <= h->u.gen_op.in_nr; i++) {
-				if (h->u.gen_op.in[i].buf == NULL)
-					break;
-				kfree(h->u.gen_op.in[i].buf);
+		if (h->u.gen_op.in) {
+			for (i = 0; i < h->u.gen_op.in_nr; i++) {
+				if (h->u.gen_op.in[i].buf)
+					kzfree(h->u.gen_op.in[i].buf);
 			}
-			kzfree(h->u.gen_op.in);
+			kfree(h->u.gen_op.in);
+		}
+		for (i = 1; i < (req->out_sgs + req->in_sgs - 2); i++) {
+			if (req->sgs[i])
+				kfree(req->sgs[i]);
 		}
 		kfree(req->sgs);
-*/	case VIRTIO_ACCEL_G_OP_DESTROY_SESSION:
+	case VIRTIO_ACCEL_G_OP_DESTROY_SESSION:
 		kzfree((struct accel_session *)req->priv);
 		break;
 	case VIRTIO_ACCEL_G_OP_DO_OP:
-/*		if (h->u.gen_op.out != NULL) {
-			for (i = 0; i <= h->u.gen_op.out_nr; i++) {
-				if (h->u.gen_op.out[i].buf == NULL)
-					break;
-				kfree(h->u.gen_op.out[i].buf);
+		if (h->u.gen_op.out) {
+			for (i = 0; i < h->u.gen_op.out_nr; i++) {
+				if (h->u.gen_op.out[i].buf)
+					kzfree(h->u.gen_op.out[i].buf);
 			}
-			kzfree(h->u.gen_op.out);
+			kfree(h->u.gen_op.out);
 		}
-		if (h->u.gen_op.in != NULL) {
-			for (i = 0; i <= h->u.gen_op.in_nr; i++) {
-				if (h->u.gen_op.in[i].buf == NULL)
-					break;
-				kfree(h->u.gen_op.in[i].buf);
+		if (h->u.gen_op.in) {
+			for (i = 0; i < h->u.gen_op.in_nr; i++) {
+				if (h->u.gen_op.in[i].buf)
+					kzfree(h->u.gen_op.in[i].buf);
 			}
-			kzfree(h->u.gen_op.in);
+			kfree(h->u.gen_op.in);
+		}
+		for (i = 1; i < (req->out_sgs + req->in_sgs - 1); i++) {
+			if (req->sgs[i])
+				kfree(req->sgs[i]);
 		}
 		kfree(req->sgs);
-*/		kzfree((struct accel_op *)req->priv);
+		kzfree((struct accel_op *)req->priv);
 		break;
 	default:
 		pr_err("clear req: invalid op returned\n");
