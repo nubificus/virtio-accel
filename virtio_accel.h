@@ -40,7 +40,8 @@ struct virtio_accel_crypto_op {
 struct virtio_accel_gen_op_arg {
 	__virtio32 len;
 	__u8 *buf;
-	__u8 padding[3];
+	__u8 __user *usr_buf;
+	__u8 padding[2];
 };
 
 struct virtio_accel_gen_op {

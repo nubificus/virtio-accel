@@ -24,7 +24,7 @@ struct accel_crypto_sess {
 
 struct accel_gen_op_arg {
 	__u32 len;
-	__u8 *buf;
+	__u8 __user *buf;
 };
 
 struct accel_gen_op {

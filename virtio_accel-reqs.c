@@ -178,6 +178,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess = req->priv;
 	struct accel_gen_op *gen = &sess->u.gen;
+	struct accel_gen_op_arg *g_arg = NULL;
 	int ret, out_nsgs = 0, in_nsgs = 0, i,
 		total_sgs = 3 + gen->in_nr + gen->out_nr;
 
@@ -186,51 +187,67 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	h->u.gen_op.out_nr = cpu_to_virtio32(vdev, gen->out_nr);
 
 	if (h->u.gen_op.in_nr > 0) {
-		h->u.gen_op.in = kzalloc_node(gen->in_nr * sizeof(*gen->in),
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
-		if (!h->u.gen_op.in)
+		g_arg = kzalloc_node(gen->in_nr * sizeof(*gen->in),
+						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+		if (!g_arg)
 			return -ENOMEM;
 		
-		if (unlikely(copy_from_user(h->u.gen_op.in, gen->in,
+		if (unlikely(copy_from_user(g_arg, gen->in,
 							gen->in_nr * sizeof(*gen->in)))) {
 			ret = -EFAULT;
 			goto free;
 		}
 
+		h->u.gen_op.in = kzalloc_node(
+								h->u.gen_op.in_nr * sizeof(*h->u.gen_op.in),
+								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+		if (!h->u.gen_op.in) {
+			ret = -ENOMEM;
+			goto free;
+		}
+		
 		for (i = 0; i < gen->in_nr; i++) {
-			h->u.gen_op.in[i].len = cpu_to_virtio32(vdev, gen->in[i].len);
+			h->u.gen_op.in[i].len = cpu_to_virtio32(vdev, g_arg[i].len);
+			h->u.gen_op.in[i].usr_buf = g_arg[i].buf;
 			h->u.gen_op.in[i].buf = kzalloc_node(h->u.gen_op.in[i].len,
 											GFP_ATOMIC,
 											dev_to_node(&vaccel->vdev->dev));
 			if (!h->u.gen_op.in[i].buf) {
 				ret = -ENOMEM;
-				goto free;
+				goto free_in;
 			}
-			if (unlikely(copy_from_user(h->u.gen_op.in[i].buf, gen->in[i].buf,
-								gen->in[i].len))) {
+			if (unlikely(copy_from_user(h->u.gen_op.in[i].buf, g_arg[i].buf,
+								g_arg[i].len))) {
 				ret = -EFAULT;
-				goto free;
+				goto free_in;
 			}
-			h->u.gen_op.in[i].len = cpu_to_virtio32(vdev, gen->in[i].len);
 		}
+		kzfree(g_arg);
 	}
 
 	if (h->u.gen_op.out_nr > 0) {
-		h->u.gen_op.out = kzalloc_node(gen->out_nr * sizeof(*gen->out),
+		g_arg = kzalloc_node(gen->out_nr * sizeof(*gen->out),
+						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+		if (!g_arg)
+			return -ENOMEM;
+		
+		if (unlikely(copy_from_user(g_arg, gen->out,
+							gen->out_nr * sizeof(*gen->out)))) {
+			ret = -EFAULT;
+			goto free_in;
+		}
+
+		h->u.gen_op.out = kzalloc_node(
+								h->u.gen_op.out_nr * sizeof(*h->u.gen_op.out),
 								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
 		if (!h->u.gen_op.out) {
 			ret = -ENOMEM;
-			goto free;
+			goto free_in;
 		}
 		
-		if (unlikely(copy_from_user(h->u.gen_op.out, gen->out,
-							gen->out_nr * sizeof(*gen->out)))) {
-			ret = -EFAULT;
-			goto free_out;
-		}
-
 		for (i = 0; i < gen->out_nr; i++) {
-			h->u.gen_op.out[i].len = cpu_to_virtio32(vdev, gen->out[i].len);
+			h->u.gen_op.out[i].len = cpu_to_virtio32(vdev, g_arg[i].len);
+			h->u.gen_op.out[i].usr_buf = g_arg[i].buf;
 			h->u.gen_op.out[i].buf = kzalloc_node(h->u.gen_op.out[i].len,
 											GFP_ATOMIC,
 											dev_to_node(&vaccel->vdev->dev));
@@ -238,12 +255,13 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 				ret = -ENOMEM;
 				goto free_out;
 			}
-			if (unlikely(copy_from_user(h->u.gen_op.out[i].buf, gen->out[i].buf,
-								gen->out[i].len))) {
+			if (unlikely(copy_from_user(h->u.gen_op.out[i].buf, g_arg[i].buf,
+								g_arg[i].len))) {
 				ret = -EFAULT;
 				goto free_out;
 			}
 		}
+		kzfree(g_arg);
 	}
 
 	pr_debug("op: %d, in_nr: %u, out_nr: %u\n",
@@ -308,7 +326,7 @@ free_out:
 		}
 		kfree(h->u.gen_op.out);
 	}
-free:
+free_in:
 	if (h->u.gen_op.in) {
 		for (i = 0; i < h->u.gen_op.in_nr; i++) {
 			if (h->u.gen_op.in[i].buf)
@@ -316,6 +334,9 @@ free:
 		}
 		kfree(h->u.gen_op.in);
 	}
+free:
+	if (g_arg)
+		kzfree(g_arg);
 	return ret;
 }
 
@@ -359,6 +380,7 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_op *op = req->priv;
 	struct accel_gen_op *gen = &op->u.gen;
+	struct accel_gen_op_arg *g_arg = NULL;
 	int ret, out_nsgs = 0, in_nsgs = 0, i,
 		total_sgs = 2 + gen->in_nr + gen->out_nr;
 
@@ -367,51 +389,67 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 	h->u.gen_op.out_nr = cpu_to_virtio32(vdev, gen->out_nr);
 
 	if (h->u.gen_op.in_nr > 0) {
-		h->u.gen_op.in = kzalloc_node(gen->in_nr * sizeof(*gen->in),
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
-		if (!h->u.gen_op.in)
+		g_arg = kzalloc_node(gen->in_nr * sizeof(*gen->in),
+						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+		if (!g_arg)
 			return -ENOMEM;
 		
-		if (unlikely(copy_from_user(h->u.gen_op.in, gen->in,
+		if (unlikely(copy_from_user(g_arg, gen->in,
 							gen->in_nr * sizeof(*gen->in)))) {
 			ret = -EFAULT;
 			goto free;
 		}
 
+		h->u.gen_op.in = kzalloc_node(
+								h->u.gen_op.in_nr * sizeof(*h->u.gen_op.in),
+								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+		if (!h->u.gen_op.in) {
+			ret = -ENOMEM;
+			goto free;
+		}
+		
 		for (i = 0; i < gen->in_nr; i++) {
-			h->u.gen_op.in[i].len = cpu_to_virtio32(vdev, gen->in[i].len);
+			h->u.gen_op.in[i].len = cpu_to_virtio32(vdev, g_arg[i].len);
+			h->u.gen_op.in[i].usr_buf = g_arg[i].buf;
 			h->u.gen_op.in[i].buf = kzalloc_node(h->u.gen_op.in[i].len,
 											GFP_ATOMIC,
 											dev_to_node(&vaccel->vdev->dev));
 			if (!h->u.gen_op.in[i].buf) {
 				ret = -ENOMEM;
-				goto free;
+				goto free_in;
 			}
-			if (unlikely(copy_from_user(h->u.gen_op.in[i].buf, gen->in[i].buf,
-								gen->in[i].len))) {
+			if (unlikely(copy_from_user(h->u.gen_op.in[i].buf, g_arg[i].buf,
+								g_arg[i].len))) {
 				ret = -EFAULT;
-				goto free;
+				goto free_in;
 			}
-			h->u.gen_op.in[i].len = cpu_to_virtio32(vdev, gen->in[i].len);
 		}
+		kfree(g_arg);
 	}
 
 	if (h->u.gen_op.out_nr > 0) {
-		h->u.gen_op.out = kzalloc_node(gen->out_nr * sizeof(*gen->out),
+		g_arg = kzalloc_node(gen->out_nr * sizeof(*gen->out),
+						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+		if (!g_arg)
+			return -ENOMEM;
+		
+		if (unlikely(copy_from_user(g_arg, gen->out,
+							gen->out_nr * sizeof(*gen->out)))) {
+			ret = -EFAULT;
+			goto free_in;
+		}
+
+		h->u.gen_op.out = kzalloc_node(
+								h->u.gen_op.out_nr * sizeof(*h->u.gen_op.out),
 								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
 		if (!h->u.gen_op.out) {
 			ret = -ENOMEM;
-			goto free;
+			goto free_in;
 		}
 		
-		if (unlikely(copy_from_user(h->u.gen_op.out, gen->out,
-							gen->out_nr * sizeof(*gen->out)))) {
-			ret = -EFAULT;
-			goto free_out;
-		}
-
 		for (i = 0; i < gen->out_nr; i++) {
-			h->u.gen_op.out[i].len = cpu_to_virtio32(vdev, gen->out[i].len);
+			h->u.gen_op.out[i].len = cpu_to_virtio32(vdev, g_arg[i].len);
+			h->u.gen_op.out[i].usr_buf = g_arg[i].buf;
 			h->u.gen_op.out[i].buf = kzalloc_node(h->u.gen_op.out[i].len,
 											GFP_ATOMIC,
 											dev_to_node(&vaccel->vdev->dev));
@@ -419,12 +457,13 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 				ret = -ENOMEM;
 				goto free_out;
 			}
-			if (unlikely(copy_from_user(h->u.gen_op.out[i].buf, gen->out[i].buf,
-								gen->out[i].len))) {
+			if (unlikely(copy_from_user(h->u.gen_op.out[i].buf, g_arg[i].buf,
+								g_arg[i].len))) {
 				ret = -EFAULT;
 				goto free_out;
 			}
 		}
+		kfree(g_arg);
 	}
 
 	pr_debug("op: %d, in_nr: %u, out_nr: %u\n",
@@ -481,13 +520,13 @@ free_sgs:
 	}
 free_out:
 	if (h->u.gen_op.out) {
-		for (i = 0; i <  h->u.gen_op.out_nr; i++) {
+		for (i = 0; i < h->u.gen_op.out_nr; i++) {
 			if (h->u.gen_op.out[i].buf)
 				kzfree(h->u.gen_op.out[i].buf);
 		}
 		kfree(h->u.gen_op.out);
 	}
-free:
+free_in:
 	if (h->u.gen_op.in) {
 		for (i = 0; i < h->u.gen_op.in_nr; i++) {
 			if (h->u.gen_op.in[i].buf)
@@ -495,6 +534,9 @@ free:
 		}
 		kfree(h->u.gen_op.in);
 	}
+free:
+	if (g_arg)
+		kzfree(g_arg);
 	return ret;
 }
 
@@ -577,17 +619,18 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess;
 	struct accel_op *op;
+	int i;
 
 	if (req->status != VIRTIO_ACCEL_OK)
-		goto out;
+		return;
 
 	switch (h->op) {
 	case VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION:
 		sess = req->priv;
 		if (unlikely(copy_to_user(req->usr, sess, sizeof(*sess)))) {
-			pr_err("handle req: create session copy failed\n");
+			pr_err("handle req: create crypto session copy failed\n");
 			req->status = VIRTIO_ACCEL_ERR;
-			goto out;
+			return;
 		}
 		break;
 	case VIRTIO_ACCEL_C_OP_CIPHER_DESTROY_SESSION:
@@ -597,39 +640,62 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 		op = req->priv;
 		if (unlikely(copy_to_user(op->u.crypto.dst, h->u.crypto_op.dst,
 						h->u.crypto_op.dst_len))) {
-			pr_err("handle req: op copy failed\n");
+			pr_err("handle req: crypto op copy failed\n");
 			req->status = VIRTIO_ACCEL_ERR;
-			goto out;
+			return;
 		}
 		break;
 	case VIRTIO_ACCEL_G_OP_CREATE_SESSION:
-		/* FIXME */
+		if (h->u.gen_op.in) {
+			for (i = 0; i < h->u.gen_op.in_nr; i++) {
+				if (!h->u.gen_op.in[i].buf)
+					continue;
+				if (unlikely(copy_to_user(h->u.gen_op.in[i].usr_buf,
+									h->u.gen_op.in[i].buf,
+									h->u.gen_op.in[i].len))) {
+					pr_err("handle req: create generic session arg copy failed"
+							"\n");
+					req->status = VIRTIO_ACCEL_ERR;
+					return;
+				}
+			}
+		}
 		sess = req->priv;
 		if (unlikely(copy_to_user(req->usr, sess, sizeof(*sess)))) {
-			pr_err("handle req: create session copy failed\n");
+			pr_err("handle req: create generic session copy failed\n");
 			req->status = VIRTIO_ACCEL_ERR;
-			goto out;
+			return;
 		}
 		break;
 	case VIRTIO_ACCEL_G_OP_DESTROY_SESSION:
 		break;
 	case VIRTIO_ACCEL_G_OP_DO_OP:
-		/* FIXME */
+		if (h->u.gen_op.in) {
+			for (i = 0; i < h->u.gen_op.in_nr; i++) {
+				if (!h->u.gen_op.in[i].buf)
+					continue;
+				if (unlikely(copy_to_user(h->u.gen_op.in[i].usr_buf,
+									h->u.gen_op.in[i].buf,
+									h->u.gen_op.in[i].len))) {
+					pr_err("handle req: create generic session arg copy failed"
+							"\n");
+					req->status = VIRTIO_ACCEL_ERR;
+					return;
+				}
+			}
+		}
 		op = req->priv;
 		if (unlikely(copy_to_user(op->u.gen.in, h->u.gen_op.in,
 						sizeof(*h->u.gen_op.in)))) {
 			pr_err("handle req: op copy failed\n");
 			req->status = VIRTIO_ACCEL_ERR;
-			goto out;
+			return;
 		}
 		break;
 	default:
 		pr_err("hadle req: invalid op returned\n");
 		break;
 	}
-
-out:
-	return;
 }
 
 int virtaccel_do_req(struct virtio_accel_req *req)
