@@ -1,8 +1,10 @@
-USR_CFLAGS = -Wall
+USR_CFLAGS += -Wall
+USR_TESTS += test-crypto test-crypto-verify test-dummy_op test-mul_op
 
 KERNEL_DIR ?= /lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
 KVERBOSE = 'V=1'
-DEBUG = n
+DEBUG = y
 
 #EXTRA_CFLAGS += -Wno-unused-variable
 ifeq ($(DEBUG),y)
@@ -25,19 +27,15 @@ virtio_accel-objs := \
 	accel.o
 
 all: modules
-tests: test-crypto test-crypto-verify
-
-KERNEL_DIR ?= /lib/modules/$(shell uname -r)/build
-PWD := $(shell pwd)
 
 modules:
 	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules
 
-test-crypto: test-crypto.c
-	$(CC) $(USR_CFLAGS) -o $@ $^
-test-crypto-verify: test-crypto-verify.c
+tests: $(USR_TESTS)
+
+test-%: test-%.c
 	$(CC) $(USR_CFLAGS) -o $@ $^
 
 clean:
 	$(MAKE) $(KMAKE_OPTS) clean
-	rm -f test-crypto test-crypto-verify
+	rm -f $(USR_TESTS)

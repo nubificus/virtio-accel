@@ -264,9 +264,6 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 		kzfree(g_arg);
 	}
 
-	pr_debug("op: %d, in_nr: %u, out_nr: %u\n",
-			h->op, h->u.gen_op.in_nr, h->u.gen_op.out_nr);
-	
 	sgs = kzalloc_node(total_sgs * sizeof(*sgs), GFP_ATOMIC,
 						dev_to_node(&vaccel->vdev->dev));
 	if (!sgs) {
@@ -286,20 +283,23 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 		sg_init_one(sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
 		sgs[out_nsgs++] = sg;
 	}
-	for (i = 0; i < h->u.gen_op.out_nr; i++) {
+	for (i = 0; i < h->u.gen_op.in_nr; i++) {
 		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
 						dev_to_node(&vaccel->vdev->dev));
 		if (!sg) {
 			ret = -ENOMEM;
 			goto free_sgs;
 		}	
-		sg_init_one(sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
+		sg_init_one(sg, h->u.gen_op.in[i].buf, h->u.gen_op.in[i].len);
 		sgs[out_nsgs + in_nsgs++] = sg;
 	}
 	sg_init_one(&sid_sg, &sess->id, sizeof(sess->id));
 	sgs[out_nsgs + in_nsgs++] = &sid_sg;
 	sg_init_one(&status_sg, &req->status, sizeof(req->status));
 	sgs[out_nsgs + in_nsgs++] = &status_sg;
+
+	pr_debug("op: %d, in_nr: %u, out_nr: %u, in_nsgs: %u, out_nsgs: %u\n",
+			h->op, h->u.gen_op.in_nr, h->u.gen_op.out_nr, in_nsgs, out_nsgs);
 	
 	req->sgs = sgs;
 	req->out_sgs = out_nsgs;
@@ -466,9 +466,6 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 		kfree(g_arg);
 	}
 
-	pr_debug("op: %d, in_nr: %u, out_nr: %u\n",
-			h->op, h->u.gen_op.in_nr, h->u.gen_op.out_nr);
-	
 	sgs = kzalloc_node(total_sgs * sizeof(*sgs), GFP_ATOMIC,
 						dev_to_node(&vaccel->vdev->dev));
 	if (!sgs) {
@@ -488,18 +485,21 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 		sg_init_one(sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
 		sgs[out_nsgs++] = sg;
 	}
-	for (i = 0; i < h->u.gen_op.out_nr; i++) {
+	for (i = 0; i < h->u.gen_op.in_nr; i++) {
 		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
 						dev_to_node(&vaccel->vdev->dev));
 		if (!sg) {
 			ret = -ENOMEM;
 			goto free_sgs;
 		}	
-		sg_init_one(sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
+		sg_init_one(sg, h->u.gen_op.in[i].buf, h->u.gen_op.in[i].len);
 		sgs[out_nsgs + in_nsgs++] = sg;
 	}
 	sg_init_one(&status_sg, &req->status, sizeof(req->status));
 	sgs[out_nsgs + in_nsgs++] = &status_sg;
+	
+	pr_debug("op: %d, in_nr: %u, out_nr: %u, in_nsgs: %u, out_nsgs: %u\n",
+			h->op, h->u.gen_op.in_nr, h->u.gen_op.out_nr, in_nsgs, out_nsgs);
 	
 	req->sgs = sgs;
 	req->out_sgs = out_nsgs;
