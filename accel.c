@@ -98,13 +98,13 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			ret = virtaccel_req_gen_create_session(req);
 		else
 			ret = virtaccel_req_gen_destroy_session(req);
-		
+
 		break;
 	case ACCIOC_GEN_DO_OP:
 		req = kzalloc(sizeof(*req), GFP_KERNEL);
 		if (!req)
 			return -ENOMEM;
-		
+
 		op = kzalloc(sizeof(*op), GFP_KERNEL);
 		if (!op)
 			return -ENOMEM;

@@ -102,6 +102,8 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 	len_a = k * m  * sizeof(*a);
 	len_b = n * k  * sizeof(*b);
 	len_c = n * m  * sizeof(*c);
+	printf("k=%u,m=%u,n=%u len_a=%lu,len_b=%lu,len_c=%lu\n",
+		k, m, n, len_a, len_b, len_c);
 	
 	// Matrices in column-major format
 	// A: K columns, M rows
@@ -132,10 +134,10 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 	memset(c, 0, len_c);
 
 	must_finish = 0;
-//	alarm(5);
+	alarm(2);
 
 	gettimeofday(&start, NULL);
-//	do {
+	do {
 		memset(&sess_hdr, 0, sizeof(sess_hdr));
 		sess_hdr.u.mul.k = htonl(k);
 		sess_hdr.u.mul.m = htonl(m);
@@ -144,11 +146,11 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 		op.session_id = sess->id;
 		op_args[0].len = sizeof(sess_hdr);
 		op_args[0].buf = (__u8 *)&sess_hdr;
-		op_args[1].len = htonl(len_a);
+		op_args[1].len = len_a;
 		op_args[1].buf = (unsigned char *)a;
-		op_args[2].len = htonl(len_b);
+		op_args[2].len = len_b;
 		op_args[2].buf = (unsigned char *)b;
-		op_args[3].len = htonl(len_c);
+		op_args[3].len = len_c;
 		op_args[3].buf = (unsigned char *)c;
 		op.u.gen.in_nr = 1;
 		op.u.gen.out_nr = 3;
@@ -169,7 +171,7 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 		//if (total > 128 * 1048576) {
 		//	must_finish=1;
 		//}
-//	} while(must_finish==0);
+	} while(must_finish==0);
 	gettimeofday(&end, NULL);
 
 	secs = udifftimeval(start, end)/ 1000000.0;
@@ -226,7 +228,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	
-	for (i = 512; i <= (512); i *= 2) {
+	for (i = 256; i <= (512); i *= 2) {
 		if (process_data(&sess, fd, i))
 			break;
 	}
