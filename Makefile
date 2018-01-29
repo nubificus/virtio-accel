@@ -1,5 +1,6 @@
 USR_CFLAGS += -Wall
-USR_TESTS += test-crypto test-crypto-verify test-dummy_op test-mul_op
+USR_TESTS += test-crypto test-crypto-verify test-dummy_op test-mul_op \
+			 test-mul_op-verify
 
 KERNEL_DIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
