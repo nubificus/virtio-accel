@@ -102,8 +102,8 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 	len_a = k * m  * sizeof(*a);
 	len_b = n * k  * sizeof(*b);
 	len_c = n * m  * sizeof(*c);
-	printf("k=%u,m=%u,n=%u len_a=%lu,len_b=%lu,len_c=%lu\n",
-		k, m, n, len_a, len_b, len_c);
+	//printf("k=%u,m=%u,n=%u len_a=%lu,len_b=%lu,len_c=%lu\n",
+	//	k, m, n, len_a, len_b, len_c);
 	
 	// Matrices in column-major format
 	// A: K columns, M rows
@@ -122,7 +122,8 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 		return 1;
 	}
 
-	printf("Working in chunks of %d bytes:\n", chunksize);
+	printf("Working with %dx%d arrays (%lubytes):\n", chunksize, chunksize,
+			len_a);
 	fflush(stdout);
 
 	for (int i = 0; i < k * m; i++) {
@@ -228,7 +229,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	
-	for (i = 256; i <= (512); i *= 2) {
+	for (i = 64; i <= (1024); i *= 2) {
 		if (process_data(&sess, fd, i))
 			break;
 	}

@@ -5,7 +5,7 @@ USR_TESTS += test-crypto test-crypto-verify test-dummy_op test-mul_op \
 KERNEL_DIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 KVERBOSE = 'V=1'
-DEBUG = y
+DEBUG = n
 
 #EXTRA_CFLAGS += -Wno-unused-variable
 ifeq ($(DEBUG),y)
