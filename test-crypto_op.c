@@ -26,8 +26,6 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <time.h>
-#include <math.h>
-#include <arpa/inet.h>
 
 #include "accel.h"
 #include "virtio_accel.h"
@@ -87,90 +85,58 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 {
 	struct accel_op op;
 	struct vaccelrt_hdr sess_hdr;
-	struct accel_gen_op_arg op_args[4];
-	float *a, *b, *c;
-	int tt = 0, i, ret;
+	struct accel_gen_op_arg op_args[3];
+	unsigned char *buf;
+	static int val = 23;
+	int tt = 0, ret;
 	struct timeval start, end;
 	struct timespec start1, end1;
 	double total = 0, ttotal = 0;
 	double secs, ddata, dspeed;
 	char metric[16];
-	unsigned int k, m, n;
-	size_t len_a, len_b, len_c;
 
-	k = m = n = chunksize;
-	len_a = k * m  * sizeof(*a);
-	len_b = n * k  * sizeof(*b);
-	len_c = n * m  * sizeof(*c);
-	//printf("k=%u,m=%u,n=%u len_a=%lu,len_b=%lu,len_c=%lu\n",
-	//	k, m, n, len_a, len_b, len_c);
-	
-	// Matrices in column-major format
-	// A: K columns, M rows
-	// B: N columns, K rows
-	// C: N columns, M rows
-	if (!(a = malloc(len_a))) {
+	if (!(buf = malloc(chunksize))) {
 		perror("malloc()");
 		return 1;
 	}
-	if (!(b = malloc(len_b))) {
-		perror("malloc()");
-		return 1;
-	}
-	if (!(c = malloc(len_c))) {
-		perror("malloc()");
-		return 1;
-	}
+	memset(buf, val++, chunksize);
 
-	printf("Working with %dx%d arrays (%lubytes):\n", chunksize, chunksize,
-			len_a);
+	printf("Working in chunks of %d bytes:\n", chunksize);
 	fflush(stdout);
-
-	for (int i = 0; i < k * m; i++) {
-		a[i] = (float)rand() / (float)RAND_MAX;
-	}
-	for (int i = 0; i < n * k; i++) {
-		b[i] = (float)rand() / (float)RAND_MAX;
-	}
-	memset(c, 0, len_c);
 
 	must_finish = 0;
 	alarm(2);
 
 	gettimeofday(&start, NULL);
 	do {
+
 		memset(&sess_hdr, 0, sizeof(sess_hdr));
-		sess_hdr.u.mul.k = htonl(k);
-		sess_hdr.u.mul.m = htonl(m);
-		sess_hdr.u.mul.n = htonl(n);
+		sess_hdr.u.aes.op = VACCELRT_AES_ENCRYPT;
 		memset(&op, 0, sizeof(op));
 		op.session_id = sess->id;
 		op_args[0].len = sizeof(sess_hdr);
-		op_args[0].buf = (__u8 *)&sess_hdr;
-		op_args[1].len = len_a;
-		op_args[1].buf = (unsigned char *)a;
-		op_args[2].len = len_b;
-		op_args[2].buf = (unsigned char *)b;
-		op_args[3].len = len_c;
-		op_args[3].buf = (unsigned char *)c;
+		op_args[0].buf = &sess_hdr;
+		op_args[1].len = chunksize;
+		op_args[1].buf = (__u8 *)buf;
+		op_args[2].len = chunksize;
+		op_args[2].buf = (__u8 *)buf;
 		op.u.gen.in_nr = 1;
-		op.u.gen.out_nr = 3;
-		op.u.gen.in = &op_args[3];
+		op.u.gen.out_nr = 2;
 		op.u.gen.out = &op_args[0];
+		op.u.gen.in = &op_args[2];
 
-	clock_gettime(CLOCK_MONOTONIC, &start1);
+		clock_gettime(CLOCK_MONOTONIC, &start1);
 		if (ret = ioctl(fdc, ACCIOC_GEN_DO_OP, &op)) {
 			perror("ioctl(ACCIOC_GEN_DO_OP)");
-			printf("%d\n", ret);
 			return 1;
 		}
-	clock_gettime(CLOCK_MONOTONIC, &end1);
-	ttotal += udifftimeval1(start1, end1);
-	tt++;
+		clock_gettime(CLOCK_MONOTONIC, &end1);
+		ttotal += udifftimeval1(start1, end1);
+		tt++;
 
 		total+=chunksize;
 		//if (total > 128 * 1048576) {
-		//	must_finish=1;
+		//  must_finish=1;
 		//}
 	} while(must_finish==0);
 	gettimeofday(&end, NULL);
@@ -178,13 +144,12 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 	secs = udifftimeval(start, end)/ 1000000.0;
 
 	value2human(si, total, secs, &ddata, &dspeed, metric);
-	printf("\tioctl: %.6f ms, %d, %.6f s\n", ttotal / (tt * 1000000.0),
+	printf("\top: %.6f ms, %d, %.6f s\n", ttotal / (tt * 1000000.0),
 			tt, ttotal / 1000000000.0);
-	printf ("\tdone in %.2f secs\n", ddata, metric, secs);
+	printf ("\tdone. %.2f %s in %.2f secs: ", ddata, metric, secs);
+	printf ("%.2f %s/sec\n", dspeed, metric);
 
-	free(a);
-	free(b);
-	free(c);
+	free(buf);
 	return 0;
 }
 
@@ -192,8 +157,11 @@ int main(int argc, char** argv)
 {
 	int fd, i;
 	struct accel_session sess;
+	struct accel_op op;
 	struct vaccelrt_hdr sess_hdr;
-	struct accel_gen_op_arg sess_outargs[1];
+	struct accel_gen_op_arg sess_outargs[2];
+	char keybuf[32];
+	size_t keylen;
 
 	signal(SIGALRM, alarm_handler);
 	
@@ -213,11 +181,11 @@ int main(int argc, char** argv)
 	}
 	
 	fprintf(stderr, "\nTesting:\n");
-	sess_hdr.type = VACCELRT_SESS_GEMM;
+	sess_hdr.type = VACCELRT_SESS_AES_ECB;
 	sess_outargs[0].buf = (__u8 *)&sess_hdr;
 	sess_outargs[0].len = sizeof(struct vaccelrt_hdr);
 
-	memset(&sess, 0, sizeof(sess));
+	memset(&sess, 0, sizeof(sess));	
 	sess.u.gen.in_nr = 0;
 	sess.u.gen.out_nr = 1;
 	sess.u.gen.out = sess_outargs;
@@ -227,7 +195,27 @@ int main(int argc, char** argv)
 		perror("ioctl(ACCIOC_GEN_SESS_CREATE)");
 		return 1;
 	}
-	
+
+	keylen = 16;
+	memset(keybuf, 0x42, keylen);
+
+	memset(&sess_hdr, 0, sizeof(sess_hdr));
+	sess_hdr.u.aes.op = VACCELRT_AES_SET_KEY;
+	op.session_id = sess.id;
+	sess_outargs[0].buf = (__u8 *)&sess_hdr;
+	sess_outargs[0].len = sizeof(struct vaccelrt_hdr);
+	sess_outargs[1].buf = (__u8 *)keybuf;
+	sess_outargs[1].len = keylen;
+	op.u.gen.in_nr = 0;
+	op.u.gen.out_nr = 2;
+	op.u.gen.out = &sess_outargs[0];
+	op.u.gen.in = NULL;
+
+	if (ioctl(fd, ACCIOC_GEN_DO_OP, &op)) {
+		perror("ioctl(ACCIOC_GEN_DO_OP)");
+		return 1;
+	}
+
 	for (i = 64; i <= (1024); i *= 2) {
 		if (process_data(&sess, fd, i))
 			break;
@@ -237,7 +225,7 @@ int main(int argc, char** argv)
 		perror("ioctl(ACCIOC_GEN_SESS_DESTROY)");
 		return 1;
 	}
-	
+
 	close(fd);
 	return 0;
 }

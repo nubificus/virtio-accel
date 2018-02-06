@@ -670,27 +670,21 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 	case VIRTIO_ACCEL_G_OP_DESTROY_SESSION:
 		break;
 	case VIRTIO_ACCEL_G_OP_DO_OP:
-		if (h->u.gen_op.in) {
-			for (i = 0; i < h->u.gen_op.in_nr; i++) {
-				if (!h->u.gen_op.in[i].buf)
-					continue;
-				if (unlikely(copy_to_user(h->u.gen_op.in[i].usr_buf,
-									h->u.gen_op.in[i].buf,
-									h->u.gen_op.in[i].len))) {
-					pr_err("handle req: create generic session arg copy failed"
-							"\n");
-					req->status = VIRTIO_ACCEL_ERR;
-					return;
-				}
+		if (!h->u.gen_op.in) 
+			break;
+
+		for (i = 0; i < h->u.gen_op.in_nr; i++) {
+			if (!h->u.gen_op.in[i].buf)
+				continue;
+			if (unlikely(copy_to_user(h->u.gen_op.in[i].usr_buf,
+							h->u.gen_op.in[i].buf,
+							h->u.gen_op.in[i].len))) {
+				pr_err("handle req: generic op arg copy failed"
+						"\n");
+				req->status = VIRTIO_ACCEL_ERR;
+				return;
 			}
-		}
-		op = req->priv;
-		if (unlikely(copy_to_user(op->u.gen.in, h->u.gen_op.in,
-						sizeof(*h->u.gen_op.in)))) {
-			pr_err("handle req: op copy failed\n");
-			req->status = VIRTIO_ACCEL_ERR;
-			return;
-		}
+		}	
 		break;
 	default:
 		pr_err("hadle req: invalid op returned\n");
