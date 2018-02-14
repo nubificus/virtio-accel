@@ -131,6 +131,8 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 	pr_debug("Waiting for request to complete\n");
 	wait_for_completion_killable(&req->completion);
+	virtaccel_handle_req_result(req);
+	virtaccel_clear_req(req);
 	reinit_completion(&req->completion);
 	pr_debug("Request completed\n");
 

@@ -216,11 +216,13 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 				ret = -ENOMEM;
 				goto free_in;
 			}
+			/*
 			if (unlikely(copy_from_user(h->u.gen_op.in[i].buf, g_arg[i].buf,
 								g_arg[i].len))) {
 				ret = -EFAULT;
 				goto free_in;
 			}
+			*/
 		}
 		kzfree(g_arg);
 	}
@@ -418,11 +420,13 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 				ret = -ENOMEM;
 				goto free_in;
 			}
+			/*
 			if (unlikely(copy_from_user(h->u.gen_op.in[i].buf, g_arg[i].buf,
 								g_arg[i].len))) {
 				ret = -EFAULT;
 				goto free_in;
 			}
+			*/
 		}
 		kfree(g_arg);
 	}
@@ -630,6 +634,7 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 		if (unlikely(copy_to_user(req->usr, sess, sizeof(*sess)))) {
 			pr_err("handle req: create crypto session copy failed\n");
 			req->status = VIRTIO_ACCEL_ERR;
+			req->ret = -EINVAL;
 			return;
 		}
 		break;
@@ -641,11 +646,13 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 		if (unlikely(copy_to_user(op->u.crypto.dst, h->u.crypto_op.dst,
 						h->u.crypto_op.dst_len))) {
 			pr_err("handle req: crypto op copy failed\n");
-			req->status = VIRTIO_ACCEL_ERR;
+			req->ret = -EINVAL;
 			return;
 		}
 		break;
 	case VIRTIO_ACCEL_G_OP_CREATE_SESSION:
+		sess = req->priv;
+		pr_debug("handle req: succesfully created session %u\n", sess->id);
 		if (h->u.gen_op.in) {
 			for (i = 0; i < h->u.gen_op.in_nr; i++) {
 				if (!h->u.gen_op.in[i].buf)
@@ -655,15 +662,14 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 									h->u.gen_op.in[i].len))) {
 					pr_err("handle req: create generic session arg copy failed"
 							"\n");
-					req->status = VIRTIO_ACCEL_ERR;
+					req->ret = -EINVAL;
 					return;
 				}
 			}
 		}
-		sess = req->priv;
 		if (unlikely(copy_to_user(req->usr, sess, sizeof(*sess)))) {
 			pr_err("handle req: create generic session copy failed\n");
-			req->status = VIRTIO_ACCEL_ERR;
+			req->ret = -EINVAL;
 			return;
 		}
 		break;
@@ -681,13 +687,14 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 							h->u.gen_op.in[i].len))) {
 				pr_err("handle req: generic op arg copy failed"
 						"\n");
-				req->status = VIRTIO_ACCEL_ERR;
+				req->ret = -EINVAL;
 				return;
 			}
 		}	
 		break;
 	default:
 		pr_err("hadle req: invalid op returned\n");
+		req->ret = -EBADMSG;
 		break;
 	}
 }

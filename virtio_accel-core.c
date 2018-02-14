@@ -45,7 +45,6 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 			pr_debug("dataq callback: status=%u\n", req->status);
 			switch (req->status) {
 			case VIRTIO_ACCEL_OK:
-
 				req->ret = 0;
 				break;
 			case VIRTIO_ACCEL_INVSESS:
@@ -61,10 +60,7 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 			}
 			
 			spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
-			/* Finish the encrypt or decrypt process */
-			virtaccel_handle_req_result(req);
 			complete_all(&req->completion);
-			virtaccel_clear_req(req);
 			spin_lock_irqsave(&vaccel->vq[qid].lock, flags);
 		}
 	} while (!virtqueue_enable_cb(vq));
