@@ -72,8 +72,8 @@ namespace cl {
 
         bool run(int idevice, int nruns);
 
-        bool invoke_kernel(unsigned int* input, unsigned int* output, int* iterNum, int sz_input, int sz_output, int sz_sz, double eTotal[evtCount]);
-        bool invoke_kernel_blocking(unsigned int* input, unsigned int* output, int* iterNum, int sz_input, int sz_output, int sz_sz, double eTotal[evtCount]);
+        bool invoke_kernel(unsigned int* input, unsigned int* output, int* iterNum, int sz_input, int sz_output, int sz_sz, size_t sz_b_input, size_t sz_b_output, double eTotal[evtCount]);
+        bool invoke_kernel_blocking(unsigned int* input, unsigned int* output, int* iterNum, int sz_input, int sz_output, int sz_sz, size_t sz_b_input, size_t sz_b_output, double eTotal[evtCount]);
 //        bool invoke_kernel_doublebuffered(unsigned int* input, unsigned int* output, int* iterNum, int sz_input, int sz_output, int sz_sz, cl_event events[evtCount], double eTotal[evtCount]);
 
         static bool unit_test_kernel_cpu();

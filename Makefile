@@ -40,13 +40,13 @@ test-%: test-%.c
 
 clean: test_sw
 test_sw: CPPFLAGS := $(CPPFLAGS) -I. -W -Wall -Wno-unknown-pragmas \
-					-fno-common -O2 -g
+					-fno-common -O2 -g -fopenmp
 export CPPFLAGS
 test_sw: CFLAGS := $(CPPFLAGS)
 export CFLAGS
 test_sw: CXXFLAGS := $(CXXFLAGS) $(CPPFLAGS) -fpermissive
 export CXXFLAGS
-test_sw: LDFLAGS := $(LDFLAGS) -L.
+test_sw: LDFLAGS := $(LDFLAGS) -L. -fopenmp
 export LDFLAGS
 test_sw:
 	$(MAKE) -C smithwaterman $(MAKECMDGOALS)

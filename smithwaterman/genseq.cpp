@@ -255,10 +255,11 @@ void compareSeq(int sz, short* seq, short* seqT, char* s)
     }
 }
 
-unsigned int* generatePackedNReadRefPair(int N, int readSize, int refSize, unsigned int** maxVal, int computeOutput = 1)
+unsigned int* generatePackedNReadRefPair(int N, int readSize, int refSize, unsigned int** maxVal, size_t *bufSize, int computeOutput = 1)
 {
     int numInt = READREFUINTSZ(readSize, refSize);
     unsigned int* pairs = new unsigned int[N * numInt];
+	*bufSize = sizeof(unsigned int) * N * numInt;
     short* readSeq = new short[readSize];
     short* refSeq = new short[refSize];
     short* readSeqT = new short[readSize];

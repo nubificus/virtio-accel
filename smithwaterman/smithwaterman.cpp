@@ -56,7 +56,7 @@ typedef struct _eventLog {
 using namespace sda;
 using namespace sda::cl;
 
-unsigned int* generatePackedNReadRefPair(int N, int readSize, int refSize, unsigned int** maxVal, int computeOutput = 1);
+unsigned int* generatePackedNReadRefPair(int N, int readSize, int refSize, unsigned int** maxVal, size_t *bufSize, int computeOutput = 1);
 
 /////////////////////////////////////////////////////////////////////////////////
 static double timestamp() {
@@ -105,7 +105,7 @@ static int getToken(FILE* fp, char* tok)
     return -1;
 }
 
-static int readReadRefFile(char* fname, unsigned int** pairs, unsigned int** maxv, int N)
+static int readReadRefFile(char* fname, unsigned int** pairs, unsigned int** maxv, int N, size_t *bufSize)
 {
     FILE* fp = fopen(fname, "r");
     char* string = new char[1024];
@@ -130,6 +130,7 @@ static int readReadRefFile(char* fname, unsigned int** pairs, unsigned int** max
             printf("Reading %d samples out of %d in the file\n", N, numSamples);
             numInt = READREFUINTSZ(rdSz, refSz);
             *pairs = new unsigned int[N * numInt];
+			*bufSize = sizeof(unsigned int) * N * numInt;
             *maxv = new unsigned int[3 * N];
         }
         if (string[0] == 'S') {
@@ -268,6 +269,8 @@ bool SmithWatermanApp::invoke_kernel(
     int sz_input,
     int sz_output,
     int sz_sz,
+	size_t sz_b_input,
+	size_t sz_b_output,
     double eTotal[evtCount])
 {
 #if 0
@@ -280,7 +283,7 @@ bool SmithWatermanApp::invoke_kernel(
     }
     else {
 #endif
-        bool res = invoke_kernel_blocking(input, output, iterNum, sz_input, sz_output, sz_sz, eTotal);
+        bool res = invoke_kernel_blocking(input, output, iterNum, sz_input, sz_output, sz_sz, sz_b_input, sz_b_output, eTotal);
         if (!res) {
             LogError("Failed Blocked SW. Test Failed");
             return false;
@@ -299,6 +302,8 @@ bool SmithWatermanApp::invoke_kernel_blocking(
     int sz_input,
     int sz_output,
     int sz_sz,
+	size_t sz_b_input,
+	size_t sz_b_output,
     double eTotal[evtCount])
 {
 	struct accel_op op;
@@ -309,13 +314,15 @@ bool SmithWatermanApp::invoke_kernel_blocking(
 	memset(&sess_hdr, 0, sizeof(sess_hdr));
 	sess_hdr.u.sw.blk_size = htonl(*iterNum);
 	sess_hdr.u.sw.nblocks = htonl(m_numBlocks);
+	sess_hdr.u.sw.sz_input = htonl(sz_input);
+	sess_hdr.u.sw.sz_output = htonl(sz_output);
 	memset(&op, 0, sizeof(op));
 	op.session_id = m_sess.id;
 	op_args[0].len = sizeof(sess_hdr);
 	op_args[0].buf = (__u8 *)&sess_hdr;
-	op_args[1].len = sz_input;
+	op_args[1].len = sz_b_input;
 	op_args[1].buf = (__u8 *)input;
-	op_args[2].len = sz_output;
+	op_args[2].len = sz_b_output;
 	op_args[2].buf = (__u8 *)output;
 	op.u.gen.in_nr = 1;
 	op.u.gen.out_nr = 2;
@@ -526,6 +533,7 @@ bool SmithWatermanApp::run(int idevice, int nruns)
     unsigned int* output;
     unsigned int* outputGolden;
     unsigned int* input;
+	size_t inBufSz, outBufSz;
     int* iterNum;
     int hwBlockSize = NUMPACKED * m_blockSz;
     int totalSamples = m_numSamples;
@@ -543,7 +551,7 @@ bool SmithWatermanApp::run(int idevice, int nruns)
 
     if (m_verifyMode) {
         cout << "Reading read-ref samples\n";
-        err = readReadRefFile((char*)m_strSampleFP.c_str(), &input, &outputGolden, totalSamples);
+        err = readReadRefFile((char*)m_strSampleFP.c_str(), &input, &outputGolden, totalSamples, &inBufSz);
         if (err != totalSamples) {
             LogError("Unable to read sample file: [%s]", m_strSampleFP.c_str());
             return false;
@@ -551,7 +559,7 @@ bool SmithWatermanApp::run(int idevice, int nruns)
     }
     else {
         cout << "Generating read-ref samples\n";
-        input = generatePackedNReadRefPair(totalSamples, MAXROW, MAXCOL, &outputGolden, 0); //do not generate compute output
+        input = generatePackedNReadRefPair(totalSamples, MAXROW, MAXCOL, &outputGolden, &inBufSz, 0); //do not generate compute output
     }
 
     //input buffer size
@@ -560,6 +568,7 @@ bool SmithWatermanApp::run(int idevice, int nruns)
     int szSz = sizeof(unsigned int);
 
     output = new unsigned int[totalSamples * 3];
+	outBufSz = sizeof(unsigned int) * totalSamples * 3;
     iterNum = new int;
     *iterNum = m_blockSz;
 
@@ -576,7 +585,8 @@ bool SmithWatermanApp::run(int idevice, int nruns)
 
     //execute
     for (int i = 0; i < nruns; i++) {
-        bool res = invoke_kernel(input, output, iterNum, inSz, outSz, szSz, eTotal);
+        bool res = invoke_kernel(input, output, iterNum, inSz, outSz, szSz,
+						inBufSz, outBufSz, eTotal);
         if (!res) {
             LogError("Failed to encode the input. Test Failed");
             return false;
