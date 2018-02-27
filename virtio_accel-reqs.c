@@ -1,14 +1,91 @@
 #include <linux/scatterlist.h>
-#include <crypto/algapi.h>
 #include <linux/err.h>
-#include <crypto/scatterwalk.h>
 #include <linux/atomic.h>
 #include <linux/virtio.h>
 #include <linux/virtio_config.h>
+#include <linux/uaccess.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"
 
+
+static int virtaccel_get_user_buf_gen(struct virtio_accel_gen_op_arg *g, int rw,
+								  	  struct virtio_device *vdev)
+{
+	int ret = 0;
+	void *b;
+//	struct timespec ts1, ts2, ts3, ts4, ts5, ts;
+
+	if (g->len > 128 && g->len <= PAGE_SIZE) {
+		//printk("len: %u\n", g->len);
+		struct page **mpages;
+		struct scatterlist *m_sg = kzalloc_node(sizeof(*m_sg), GFP_ATOMIC,
+										dev_to_node(&vdev->dev));
+		if (!m_sg)
+			return -ENOMEM;
+
+		ret = virtaccel_map_user_buf(m_sg, &mpages, g->usr_buf, g->len,
+					rw, vdev);
+		if (ret > 0) {
+			g->buf = (__u8 *)m_sg;
+			g->usr_pages = (__u8 *)mpages;
+			g->usr_npages = cpu_to_virtio32(vdev, ret);
+		}
+
+		return ret;
+	}
+	
+//	ktime_get_ts(&ts1);
+	b = kzalloc_node(g->len, GFP_ATOMIC, dev_to_node(&vdev->dev));
+	if (!b) {
+		return -ENOMEM;
+	}
+//	ktime_get_ts(&ts2);
+	if (unlikely(copy_from_user(b, g->usr_buf, g->len))) {
+		kfree(b);
+		return -EFAULT;
+	}
+//	ktime_get_ts(&ts3);
+
+//	ts = timespec_sub(ts2, ts1);
+//	printk("TIME alloc: %lus%luns \r\n", ts.tv_sec, ts.tv_nsec);	
+//	ts = timespec_sub(ts3, ts2);
+//	printk("TIME cp: %lus%luns \r\n", ts.tv_sec, ts.tv_nsec);	
+
+	g->buf = b;
+	return ret;
+}
+
+static int virtaccel_get_sg_elem_gen(struct scatterlist **sg_elem,
+									 struct virtio_accel_gen_op_arg *g,
+									 struct virtio_device *vdev)
+{
+	struct scatterlist *sg;
+
+	if (g->len > 128 && g->len <= PAGE_SIZE) {
+		*sg_elem = (struct scatterlist *)g->buf;
+		return 0;
+	}
+
+	sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC, dev_to_node(&vdev->dev));
+	if (!sg)
+		return -ENOMEM;
+
+	sg_init_one(sg, g->buf, g->len);
+	*sg_elem = sg;
+	return 0;
+}	
+
+static void virtaccel_free_buf_gen(struct virtio_accel_gen_op_arg *g)
+{
+	if (!g->buf)
+		return;
+
+	if (g->len > 128 && g->len <= PAGE_SIZE)
+		virtaccel_unmap_user_buf((struct page **)g->usr_pages, g->usr_npages);
+	else
+		kzfree(g->buf);
+}
 
 int virtaccel_req_crypto_create_session(struct virtio_accel_req *req)
 {
@@ -22,7 +99,7 @@ int virtaccel_req_crypto_create_session(struct virtio_accel_req *req)
 	h->op = cpu_to_virtio32(vdev, VIRTIO_ACCEL_C_OP_CIPHER_CREATE_SESSION);
 
 	h->u.crypto_sess.key = kzalloc_node(sess->u.crypto.keylen,
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+								GFP_ATOMIC, dev_to_node(&vdev->dev));
 	if (!h->u.crypto_sess.key)
 		return -ENOMEM;
 	
@@ -109,7 +186,7 @@ int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 	h->session_id = cpu_to_virtio32(vdev, aop->session_id);
 
 	h->u.crypto_op.src = kzalloc_node(aop->u.crypto.src_len, GFP_ATOMIC,
-								dev_to_node(&vaccel->vdev->dev));
+								dev_to_node(&vdev->dev));
 	if (!h->u.crypto_op.src)
 		return -ENOMEM;
 	
@@ -122,7 +199,7 @@ int virtaccel_req_crypto_operation(struct virtio_accel_req *req, int opcode)
 	if (aop->u.crypto.src_len != aop->u.crypto.dst_len) {
 		pr_debug("crypto op src_len != dst_len\n");
 		h->u.crypto_op.dst = kzalloc_node(aop->u.crypto.dst_len, GFP_ATOMIC,
-								dev_to_node(&vaccel->vdev->dev));
+								dev_to_node(&vdev->dev));
 		if (!h->u.crypto_op.dst) {
 			ret = -ENOMEM;
 			goto free_dst;
@@ -188,7 +265,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 
 	if (h->u.gen_op.in_nr > 0) {
 		g_arg = kzalloc_node(gen->in_nr * sizeof(*gen->in),
-						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+						GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!g_arg)
 			return -ENOMEM;
 		
@@ -200,7 +277,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 
 		h->u.gen_op.in = kzalloc_node(
 								h->u.gen_op.in_nr * sizeof(*h->u.gen_op.in),
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+								GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!h->u.gen_op.in) {
 			ret = -ENOMEM;
 			goto free;
@@ -211,7 +288,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 			h->u.gen_op.in[i].usr_buf = g_arg[i].buf;
 			h->u.gen_op.in[i].buf = kzalloc_node(h->u.gen_op.in[i].len,
 											GFP_ATOMIC,
-											dev_to_node(&vaccel->vdev->dev));
+											dev_to_node(&vdev->dev));
 			if (!h->u.gen_op.in[i].buf) {
 				ret = -ENOMEM;
 				goto free_in;
@@ -229,7 +306,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 
 	if (h->u.gen_op.out_nr > 0) {
 		g_arg = kzalloc_node(gen->out_nr * sizeof(*gen->out),
-						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+						GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!g_arg)
 			return -ENOMEM;
 		
@@ -241,7 +318,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 
 		h->u.gen_op.out = kzalloc_node(
 								h->u.gen_op.out_nr * sizeof(*h->u.gen_op.out),
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+								GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!h->u.gen_op.out) {
 			ret = -ENOMEM;
 			goto free_in;
@@ -252,7 +329,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 			h->u.gen_op.out[i].usr_buf = g_arg[i].buf;
 			h->u.gen_op.out[i].buf = kzalloc_node(h->u.gen_op.out[i].len,
 											GFP_ATOMIC,
-											dev_to_node(&vaccel->vdev->dev));
+											dev_to_node(&vdev->dev));
 			if (!h->u.gen_op.out[i].buf) {
 				ret = -ENOMEM;
 				goto free_out;
@@ -267,7 +344,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	}
 
 	sgs = kzalloc_node(total_sgs * sizeof(*sgs), GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
+						dev_to_node(&vdev->dev));
 	if (!sgs) {
 		ret = -EFAULT;
 		goto free_out;
@@ -277,7 +354,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	sgs[out_nsgs++] = &hdr_sg;
 	for (i = 0; i < h->u.gen_op.out_nr; i++) {
 		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
+						dev_to_node(&vdev->dev));
 		if (!sg) {
 			ret = -ENOMEM;
 			goto free_sgs;
@@ -287,7 +364,7 @@ int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
 	}
 	for (i = 0; i < h->u.gen_op.in_nr; i++) {
 		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
+						dev_to_node(&vdev->dev));
 		if (!sg) {
 			ret = -ENOMEM;
 			goto free_sgs;
@@ -387,12 +464,13 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 		total_sgs = 2 + gen->in_nr + gen->out_nr;
 
 	h->op = cpu_to_virtio32(vdev, VIRTIO_ACCEL_G_OP_DO_OP);
+	h->session_id = cpu_to_virtio32(vdev, op->session_id);
 	h->u.gen_op.in_nr = cpu_to_virtio32(vdev, gen->in_nr);
 	h->u.gen_op.out_nr = cpu_to_virtio32(vdev, gen->out_nr);
 
 	if (h->u.gen_op.in_nr > 0) {
 		g_arg = kzalloc_node(gen->in_nr * sizeof(*gen->in),
-						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+						GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!g_arg)
 			return -ENOMEM;
 		
@@ -404,7 +482,7 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 
 		h->u.gen_op.in = kzalloc_node(
 								h->u.gen_op.in_nr * sizeof(*h->u.gen_op.in),
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+								GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!h->u.gen_op.in) {
 			ret = -ENOMEM;
 			goto free;
@@ -415,7 +493,7 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 			h->u.gen_op.in[i].usr_buf = g_arg[i].buf;
 			h->u.gen_op.in[i].buf = kzalloc_node(h->u.gen_op.in[i].len,
 											GFP_ATOMIC,
-											dev_to_node(&vaccel->vdev->dev));
+											dev_to_node(&vdev->dev));
 			if (!h->u.gen_op.in[i].buf) {
 				ret = -ENOMEM;
 				goto free_in;
@@ -433,7 +511,7 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 
 	if (h->u.gen_op.out_nr > 0) {
 		g_arg = kzalloc_node(gen->out_nr * sizeof(*gen->out),
-						GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+						GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!g_arg)
 			return -ENOMEM;
 		
@@ -445,7 +523,7 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 
 		h->u.gen_op.out = kzalloc_node(
 								h->u.gen_op.out_nr * sizeof(*h->u.gen_op.out),
-								GFP_ATOMIC, dev_to_node(&vaccel->vdev->dev));
+								GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!h->u.gen_op.out) {
 			ret = -ENOMEM;
 			goto free_in;
@@ -454,9 +532,10 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 		for (i = 0; i < gen->out_nr; i++) {
 			h->u.gen_op.out[i].len = cpu_to_virtio32(vdev, g_arg[i].len);
 			h->u.gen_op.out[i].usr_buf = g_arg[i].buf;
+			/*
 			h->u.gen_op.out[i].buf = kzalloc_node(h->u.gen_op.out[i].len,
 											GFP_ATOMIC,
-											dev_to_node(&vaccel->vdev->dev));
+											dev_to_node(&vdev->dev));
 			if (!h->u.gen_op.out[i].buf) {
 				ret = -ENOMEM;
 				goto free_out;
@@ -466,12 +545,16 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 				ret = -EFAULT;
 				goto free_out;
 			}
+			*/
+			ret = virtaccel_get_user_buf_gen(&h->u.gen_op.out[i], 0, vdev);
+			if (ret < 0)
+				goto free_out;
 		}
 		kfree(g_arg);
 	}
 
 	sgs = kzalloc_node(total_sgs * sizeof(*sgs), GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
+						dev_to_node(&vdev->dev));
 	if (!sgs) {
 		ret = -EFAULT;
 		goto free_out;
@@ -480,18 +563,23 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 	sg_init_one(&hdr_sg, h, sizeof(*h));
 	sgs[out_nsgs++] = &hdr_sg;
 	for (i = 0; i < h->u.gen_op.out_nr; i++) {
+		/*
 		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
+						dev_to_node(&vdev->dev));
 		if (!sg) {
 			ret = -ENOMEM;
 			goto free_sgs;
 		}	
 		sg_init_one(sg, h->u.gen_op.out[i].buf, h->u.gen_op.out[i].len);
+		*/
+		ret = virtaccel_get_sg_elem_gen(&sg, &h->u.gen_op.out[i], vdev);
+		if (ret < 0)
+			goto free_sgs;
+
 		sgs[out_nsgs++] = sg;
 	}
 	for (i = 0; i < h->u.gen_op.in_nr; i++) {
-		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC,
-						dev_to_node(&vaccel->vdev->dev));
+		sg = kzalloc_node(sizeof(*sg), GFP_ATOMIC, dev_to_node(&vdev->dev));
 		if (!sg) {
 			ret = -ENOMEM;
 			goto free_sgs;
@@ -514,7 +602,6 @@ int virtaccel_req_gen_operation(struct virtio_accel_req *req)
 		in_nsgs--;
 		goto free_sgs;
 	}
-
 	return ret;
 
 free_sgs:
@@ -525,8 +612,11 @@ free_sgs:
 free_out:
 	if (h->u.gen_op.out) {
 		for (i = 0; i < h->u.gen_op.out_nr; i++) {
+			/*
 			if (h->u.gen_op.out[i].buf)
 				kzfree(h->u.gen_op.out[i].buf);
+			*/
+			virtaccel_free_buf_gen(&h->u.gen_op.out[i]);
 		}
 		kfree(h->u.gen_op.out);
 	}
@@ -588,8 +678,11 @@ void virtaccel_clear_req(struct virtio_accel_req *req)
 	case VIRTIO_ACCEL_G_OP_DO_OP:
 		if (h->u.gen_op.out) {
 			for (i = 0; i < h->u.gen_op.out_nr; i++) {
+				/*
 				if (h->u.gen_op.out[i].buf)
 					kzfree(h->u.gen_op.out[i].buf);
+				*/
+				virtaccel_free_buf_gen(&h->u.gen_op.out[i]);
 			}
 			kfree(h->u.gen_op.out);
 		}
@@ -722,7 +815,6 @@ int virtaccel_do_req(struct virtio_accel_req *req)
 	spin_unlock_irqrestore(&va->vq[0].lock, flags);
 	pr_debug("do_req ret: %d\n", ret);
 	if (unlikely(ret < 0)) {
-		// TODO: free key etc.
 		virtaccel_clear_req(req);
 		return ret;
 	}

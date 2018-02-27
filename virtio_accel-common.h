@@ -76,4 +76,12 @@ void virtaccel_clear_req(struct virtio_accel_req *req);
 void virtaccel_handle_req_result(struct virtio_accel_req *req);
 int virtaccel_do_req(struct virtio_accel_req *req);
 
+/* virtio_accel-zc */
+int virtaccel_map_user_buf(struct scatterlist *mpages_sg, struct page ***mpages,
+						   void __user *_uaddr, size_t ulen, int rw,
+						   struct virtio_device *vdev);
+void virtaccel_unmap_user_buf(struct page **mpages,
+							  const unsigned int nr_pages);
+
+
 #endif /* _VIRTIO_ACCEL_COMMON_H */

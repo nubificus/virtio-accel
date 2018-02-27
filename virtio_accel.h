@@ -41,7 +41,9 @@ struct virtio_accel_gen_op_arg {
 	__virtio32 len;
 	__u8 *buf;
 	__u8 __user *usr_buf;
-	__u8 padding[2];
+	__u8 *usr_pages;
+	__virtio32 usr_npages;
+	__u8 padding[5];
 };
 
 struct virtio_accel_gen_op {
