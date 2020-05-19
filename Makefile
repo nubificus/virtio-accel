@@ -1,8 +1,9 @@
 USR_CPPFLAGS := $(USR_CPPFLAGS) -Wall
 USR_TESTS := test-crypto test-crypto-verify test-dummy_op test-mul_op \
-			 test-mul_op-verify test-crypto_op test-crypto_op-verify
+			 test-mul_op-verify test-crypto_op test-crypto_op-verify \
+			 test-class_op
 
-KERNEL_DIR ?= /lib/modules/$(shell uname -r)/build
+KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 KVERBOSE = 'V=1'
 DEBUG = n
@@ -12,7 +13,7 @@ ifeq ($(DEBUG),y)
   EXTRA_CFLAGS += -g -DDEBUG
 endif
 
-KMAKE_OPTS := -C $(KERNEL_DIR) M=$(CURDIR)
+KMAKE_OPTS := -C $(KDIR) M=$(CURDIR)
 ifneq ($(ARCH),)
 KMAKE_OPTS += ARCH=$(ARCH)
 endif
