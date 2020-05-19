@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/virtio_config.h>
 #include <linux/cpu.h>
+#include <linux/version.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"
@@ -99,9 +100,13 @@ static int virtaccel_find_vqs(struct virtio_accel *vaccel)
 				"q.%d", i);
 		names[i] = vaccel->vq[i].name;
 	}
-
-	ret = vaccel->vdev->config->find_vqs(vaccel->vdev, total_vqs, vqs,
-				callbacks, names);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0)
+	ret = virtio_find_vqs(vaccel->vdev, total_vqs, vqs, callbacks,
+				names, NULL);
+#else
+	ret = vaccel->vdev->config->find_vqs(vaccel->vdev, total_vqs, 
+				vqs, callbacks, names);
+#endif
 	if (ret)
 		goto err_find;
 
