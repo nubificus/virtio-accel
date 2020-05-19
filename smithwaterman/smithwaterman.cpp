@@ -222,8 +222,8 @@ SmithWatermanApp::SmithWatermanApp(const string& vendor_name,
 	sess_outargs.len = sizeof(struct vaccelrt_hdr);
 
 	memset(&m_sess, 0, sizeof(m_sess));
-	m_sess.u.gen.in_nr = 0;
 	m_sess.u.gen.out_nr = 1;
+	m_sess.u.gen.in_nr = 0;
 	m_sess.u.gen.out = &sess_outargs;
 	m_sess.u.gen.in = NULL;
 
@@ -324,8 +324,8 @@ bool SmithWatermanApp::invoke_kernel_blocking(
 	op_args[1].buf = (__u8 *)input;
 	op_args[2].len = sz_b_output;
 	op_args[2].buf = (__u8 *)output;
-	op.u.gen.in_nr = 1;
 	op.u.gen.out_nr = 2;
+	op.u.gen.in_nr = 1;
 	op.u.gen.out = &op_args[0];
 	op.u.gen.in = &op_args[2];
 
