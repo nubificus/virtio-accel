@@ -29,10 +29,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			return -ENOMEM;
 		
 		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-		if (!sess)
-			return -ENOMEM;
+		if (!sess) {
+			ret = -ENOMEM;
+			goto err_req;
+		}
+
 		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
-			kfree(sess);
 			ret = -EFAULT;
 			goto err_req;
 		}
@@ -56,10 +58,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			return -ENOMEM;
 	
 		op = kzalloc(sizeof(*op), GFP_KERNEL);
-		if (!op)
-			return -ENOMEM;
+		if (!op) {
+			ret = -ENOMEM;
+			goto err_req;
+		}
+
 		if (unlikely(copy_from_user(op, arg, sizeof(*op)))) {
-			kfree(op);
 			ret = -EFAULT;
 			goto err_req;
 		}
@@ -82,10 +86,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			return -ENOMEM;
 		
 		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-		if (!sess)
-			return -ENOMEM;
+		if (!sess) {
+			ret = -ENOMEM;
+			goto err_req;
+		}
+
 		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
-			kfree(sess);
 			ret = -EFAULT;
 			goto err_req;
 		}
@@ -106,10 +112,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			return -ENOMEM;
 
 		op = kzalloc(sizeof(*op), GFP_KERNEL);
-		if (!op)
-			return -ENOMEM;
+		if (!op) {
+			ret = -ENOMEM;
+			goto err_req;
+		}
+
 		if (unlikely(copy_from_user(op, arg, sizeof(*op)))) {
-			kfree(op);
 			ret = -EFAULT;
 			goto err_req;
 		}
@@ -141,6 +149,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	return ret;
 
 err_req:
+	if (sess)
+		kfree(sess);
+
+	if (op)
+		kfree(op);
+
 	kzfree(req);
 err:
 	return ret;
