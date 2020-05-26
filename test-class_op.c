@@ -88,7 +88,7 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 {
 	struct accel_op op;
 	struct vaccelrt_hdr sess_hdr;
-	struct accel_gen_op_arg op_args[3];
+	struct accel_gen_op_arg op_args[4];
 	static int val = 23;
 	int tt = 0, ret;
 	struct timeval start, end;
@@ -96,12 +96,13 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 	double total = 0, ttotal = 0, cltotal = 0;
 	double secs, ddata, dspeed;
 	char metric[16];
+	char class_text[512], class_imgname[512];
 
-	must_finish = 1;
-	alarm(2);
+	//must_finish = 0;
+	//alarm(2);
 
 	gettimeofday(&start, NULL);
-	do {
+	//do {
 
 		memset(&sess_hdr, 0, sizeof(sess_hdr));
 		op.session_id = sess->id;
@@ -109,9 +110,11 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 		op_args[0].buf = &sess_hdr;
 		op_args[1].len = image_len;
 		op_args[1].buf = (unsigned char *)image;
-		op_args[2].len = image_len;
-		op_args[2].buf = NULL;
-		op.u.gen.in_nr = 1;
+		op_args[2].len = sizeof(class_text);
+		op_args[2].buf = (unsigned char *)class_text;
+		op_args[3].len = sizeof(class_imgname);
+		op_args[3].buf = (unsigned char *)class_imgname;
+		op.u.gen.in_nr = 2;
 		op.u.gen.out_nr = 2;
 		op.u.gen.in = &op_args[2];
 		op.u.gen.out = &op_args[0];
@@ -124,6 +127,8 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 		}
 
 	clock_gettime(CLOCK_MONOTONIC, &end1);
+		printf("classification text: %s\n", class_text);
+		printf("classification image name: %s\n", class_imgname);
 	//ttotal += udifftimeval1(start1, end1);
 	//tt++;
 
@@ -132,7 +137,7 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 		//if (total > 128 * 1048576) {
 		//	must_finish=1;
 		//}
-	} while(must_finish==0);
+	//} while(must_finish==0);
 	gettimeofday(&end, NULL);
 
 	secs = udifftimeval(start, end)/ 1000000.0;
