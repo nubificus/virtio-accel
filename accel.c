@@ -6,6 +6,7 @@
 #include <linux/miscdevice.h>
 #include <linux/virtio.h>
 #include <linux/virtio_config.h>
+#include <linux/slab.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"

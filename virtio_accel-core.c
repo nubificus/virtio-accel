@@ -21,6 +21,7 @@
 #include <linux/virtio_config.h>
 #include <linux/cpu.h>
 #include <linux/version.h>
+#include <linux/slab.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"

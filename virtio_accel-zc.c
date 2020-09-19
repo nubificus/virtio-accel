@@ -4,6 +4,7 @@
 #include <linux/atomic.h>
 #include <linux/virtio.h>
 #include <linux/highmem.h>
+#include <linux/slab.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"
