@@ -84,7 +84,7 @@ static void value2human(int si, double bytes, double time, double* data,
 
 #define MAX(x,y) ((x)>(y)?(x):(y))
 
-int process_data(struct accel_session *sess, int fdc, int image_len, char *image)
+int process_data(struct accel_session *sess, int fdc, int image_len, char *image, int iterations)
 {
 	struct accel_op op;
 	struct vaccelrt_hdr sess_hdr;
@@ -93,16 +93,16 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 	int tt = 0, ret;
 	struct timeval start, end;
 	struct timespec start1, end1;
-	double total = 0, ttotal = 0, cltotal = 0;
+	double total = 0, ttotal = 0, cltotal = 0, op_time[iterations-1];
 	double secs, ddata, dspeed;
 	char metric[16];
-	char class_text[512], class_imgname[512];
+	char out_text[512], out_imgname[512];
 
-	//must_finish = 0;
+	must_finish = 0;
 	//alarm(2);
 
 	gettimeofday(&start, NULL);
-	//do {
+	do {
 
 		memset(&sess_hdr, 0, sizeof(sess_hdr));
 		op.session_id = sess->id;
@@ -110,10 +110,10 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 		op_args[0].buf = &sess_hdr;
 		op_args[1].len = image_len;
 		op_args[1].buf = (unsigned char *)image;
-		op_args[2].len = sizeof(class_text);
-		op_args[2].buf = (unsigned char *)class_text;
-		op_args[3].len = sizeof(class_imgname);
-		op_args[3].buf = (unsigned char *)class_imgname;
+		op_args[2].len = sizeof(out_text);
+		op_args[2].buf = (unsigned char *)out_text;
+		op_args[3].len = sizeof(out_imgname);
+		op_args[3].buf = (unsigned char *)out_imgname;
 		op.u.gen.in_nr = 2;
 		op.u.gen.out_nr = 2;
 		op.u.gen.in = &op_args[2];
@@ -127,26 +127,30 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 		}
 
 	clock_gettime(CLOCK_MONOTONIC, &end1);
-		printf("classification text: %s\n", class_text);
-		printf("classification image name: %s\n", class_imgname);
-	//ttotal += udifftimeval1(start1, end1);
-	//tt++;
+		//printf("output text: %s\n", out_text);
+		//printf("output image name: %s\n", out_imgname);
+	op_time[tt] = udifftimeval1(start1, end1);
+	ttotal += op_time[tt];
+	tt++;
 
 	//	total+=image_len;
 	//	cltotal+=sess->ocl_ctx.op_time;
-		//if (total > 128 * 1048576) {
-		//	must_finish=1;
-		//}
-	//} while(must_finish==0);
+		if (tt == iterations) {
+			must_finish=1;
+		}
+	} while(must_finish==0);
 	gettimeofday(&end, NULL);
 
 	secs = udifftimeval(start, end)/ 1000000.0;
 
-	//value2human(si, total, secs, &ddata, &dspeed, metric);
-	//printf("\top: %.6f ms, %d, %.6f s\n", ttotal / (tt * 1000000.0),
-	//		tt, ttotal / 1000000000.0);
+	value2human(si, total, secs, &ddata, &dspeed, metric);
+	for (int i = 0; i < iterations; i++)
+		printf("\top[%d]: %.6f ms\n", i, op_time[i] / 1000000.0);
+	printf("\n\titerations: %d\n\top: %.6f ms\n", \
+			iterations, ttotal / (tt * 1000000.0));
 	//printf("\topencl op: %.6f ms, %d, %.6f s\n", cltotal / tt,
 	//		tt, cltotal / 1000.0);
+	printf ("\ttotal: %.6f secs\n", secs);
 	//printf ("\tdone. %.2f %s in %.2f secs: ", ddata, metric, secs);
 	//printf ("%.2f %s/sec\n", dspeed, metric);
 
@@ -155,7 +159,7 @@ int process_data(struct accel_session *sess, int fdc, int image_len, char *image
 
 int main(int argc, char** argv)
 {
-	int i, fd, ffd, ret;
+	int i, fd, ffd, ret, iterations = 1;
 	struct accel_session sess;
 	struct vaccelrt_hdr sess_hdr;
 	struct accel_gen_op_arg sess_outargs[2];
@@ -175,7 +179,9 @@ int main(int argc, char** argv)
 		if (strcmp(argv[1], "--kib") == 0) {
 			si = 0;
 		} else {
-			filename = argv[argc-1];
+			filename = argv[1];
+			if (argc > 2)
+				iterations = atoi(argv[2]);
 		}
 	}
 
@@ -219,7 +225,7 @@ int main(int argc, char** argv)
 	close(ffd);
 
 	i = fsize;
-	process_data(&sess, fd, i, image);
+	process_data(&sess, fd, i, image, iterations);
 
 out:
 	if (ioctl(fd, ACCIOC_GEN_SESS_DESTROY, &sess)) {
