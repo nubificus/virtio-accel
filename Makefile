@@ -1,7 +1,7 @@
 USR_CPPFLAGS := $(USR_CPPFLAGS) -Wall
 USR_TESTS := test-crypto test-crypto-verify test-dummy_op test-mul_op \
 			 test-mul_op-verify test-crypto_op test-crypto_op-verify \
-			 test-class_op
+			 test-class_op test-det_op test-seg_op
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
