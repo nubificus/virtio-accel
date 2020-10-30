@@ -61,7 +61,6 @@ int virtaccel_dev_start(struct virtio_accel *vcrypto);
 void virtaccel_dev_stop(struct virtio_accel *vcrypto);
 
 /* virtio_accel-reqs */
-
 int virtaccel_req_create_session(struct virtio_accel_req *req);
 int virtaccel_req_destroy_session(struct virtio_accel_req *req);
 int virtaccel_req_operation(struct virtio_accel_req *req);
@@ -70,10 +69,11 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req);
 int virtaccel_do_req(struct virtio_accel_req *req);
 
 /* virtio_accel-zc */
-int virtaccel_map_user_buf(struct scatterlist *mpages_sg, struct page ***mpages,
-		void __user *_uaddr, size_t ulen, int rw,
-		struct virtio_device *vdev);
-void virtaccel_unmap_user_buf(struct page **mpages,
+int virtaccel_map_user_buf(struct sg_table **m_sgt, struct page ***m_pages,
+		void __user *_uaddr, size_t ulen,
+		int write, struct virtio_device *vdev);
+
+void virtaccel_unmap_user_buf(struct sg_table *m_sgt, struct page **m_pages,
 		const unsigned int nr_pages);
 
 #endif /* _VIRTIO_ACCEL_COMMON_H */

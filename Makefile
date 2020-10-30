@@ -1,11 +1,15 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 KVERBOSE = 'V=1'
-DEBUG = n
+DEBUG ?= 0
+ZC ?= 1
 
 #EXTRA_CFLAGS += -Wno-unused-variable
-ifeq ($(DEBUG),y)
+ifeq ($(DEBUG),1)
   EXTRA_CFLAGS += -g -DDEBUG
+endif
+ifeq ($(ZC),1)
+EXTRA_CFLAGS += -DZC
 endif
 
 KMAKE_OPTS := -C $(KDIR) M=$(CURDIR)

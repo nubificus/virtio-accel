@@ -32,7 +32,7 @@ struct virtio_accel_op {
 };
 
 struct virtio_accel_hdr {
-	__virtio32 id;
+	__virtio32 sess_id;
 
 #define VIRTIO_ACCEL_NO_OP                   0
 #define VIRTIO_ACCEL_CREATE_SESSION          1
@@ -46,10 +46,10 @@ struct virtio_accel_hdr {
 
 struct virtio_accel_conf {
 	__u32 status;
-    /* Supported service mask */
-    __u32 services;
-    /* Maximum size of each crypto request's content */
-    __u64 max_size;
+	/* Supported service mask */
+	__u32 services;
+	/* Maximum size of each crypto request's content */
+	__u64 max_size;
 };
 
 #endif /* _VIRTIO_ACCEL_H */
