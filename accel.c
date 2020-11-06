@@ -12,130 +12,54 @@
 #include "virtio_accel-common.h"
 
 static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
-							unsigned long _arg)
+		unsigned long _arg)
 {
 	void __user *arg = (void __user *)_arg;
 	struct virtio_accel_file *vaccel_file = filp->private_data;
 	struct virtio_accel *vaccel = vaccel_file->vaccel;
 	struct virtio_accel_req *req;
 	struct accel_session *sess = NULL;
-	struct accel_op *op = NULL;
 	int ret;
 
-	switch (cmd) {
-	case ACCIOC_CRYPTO_SESS_CREATE:
-	case ACCIOC_CRYPTO_SESS_DESTROY:
-		req = kzalloc(sizeof(*req), GFP_KERNEL);
-		if (!req)
-			return -ENOMEM;
-		
-		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-		if (!sess) {
-			ret = -ENOMEM;
-			goto err_req;
-		}
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
 
-		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
-			ret = -EFAULT;
-			goto err_req;
-		}
+	sess = kmalloc(sizeof(*sess), GFP_KERNEL);
+	if (!sess) {
+		ret = -ENOMEM;
+		goto err_req;
+	}
 
-		req->usr = arg;
-		req->priv = sess;
-		req->vaccel = vaccel;
-
-		if (cmd == ACCIOC_CRYPTO_SESS_CREATE)
-			ret = virtaccel_req_crypto_create_session(req);
-		else
-			ret = virtaccel_req_crypto_destroy_session(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-
-		break;
-	case ACCIOC_CRYPTO_ENCRYPT:
-	case ACCIOC_CRYPTO_DECRYPT:
-		req = kzalloc(sizeof(*req), GFP_KERNEL);
-		if (!req)
-			return -ENOMEM;
-	
-		op = kzalloc(sizeof(*op), GFP_KERNEL);
-		if (!op) {
-			ret = -ENOMEM;
-			goto err_req;
-		}
-
-		if (unlikely(copy_from_user(op, arg, sizeof(*op)))) {
-			ret = -EFAULT;
-			goto err_req;
-		}
-
-		req->priv = op;
-		req->vaccel = vaccel;
-
-		if (cmd == ACCIOC_CRYPTO_ENCRYPT)
-			ret = virtaccel_req_crypto_encrypt(req);
-		else
-			ret = virtaccel_req_crypto_decrypt(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-
-		break;
-	case ACCIOC_GEN_SESS_CREATE:
-	case ACCIOC_GEN_SESS_DESTROY:
-		req = kzalloc(sizeof(*req), GFP_KERNEL);
-		if (!req)
-			return -ENOMEM;
-		
-		sess = kzalloc(sizeof(*sess), GFP_KERNEL);
-		if (!sess) {
-			ret = -ENOMEM;
-			goto err_req;
-		}
-
-		if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
-			ret = -EFAULT;
-			goto err_req;
-		}
-
-		req->usr = arg;
-		req->priv = sess;
-		req->vaccel = vaccel;
-		
-		if (cmd == ACCIOC_GEN_SESS_CREATE)
-			ret = virtaccel_req_gen_create_session(req);
-		else
-			ret = virtaccel_req_gen_destroy_session(req);
-
-		break;
-	case ACCIOC_GEN_DO_OP:
-		req = kzalloc(sizeof(*req), GFP_KERNEL);
-		if (!req)
-			return -ENOMEM;
-
-		op = kzalloc(sizeof(*op), GFP_KERNEL);
-		if (!op) {
-			ret = -ENOMEM;
-			goto err_req;
-		}
-
-		if (unlikely(copy_from_user(op, arg, sizeof(*op)))) {
-			ret = -EFAULT;
-			goto err_req;
-		}
-
-		req->usr = arg;
-		req->priv = op;
-		req->vaccel = vaccel;
-		
-		ret = virtaccel_req_gen_operation(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-
-		break;
-	default:
-		pr_err("Invalid IOCTL\n");
+	if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
 		ret = -EFAULT;
-		goto err;
+		goto err_req;
+	}
+
+	req->usr = arg;
+	req->priv = sess;
+	req->vaccel = vaccel;
+
+	switch (cmd) {
+		case VACCEL_SESS_CREATE:
+			ret = virtaccel_req_gen_create_session(req);
+			if (ret)
+				goto err_req;
+			break;
+		case VACCEL_SESS_DESTROY:
+			ret = virtaccel_req_gen_destroy_session(req);
+			if (ret)
+				goto err_req;
+			break;
+		case VACCEL_DO_OP:
+			ret = virtaccel_req_gen_operation(req);
+			if (ret != -EINPROGRESS)
+				goto err_req;
+			break;
+		default:
+			pr_err("Invalid IOCTL\n");
+			ret = -EFAULT;
+			goto err;
 	}
 
 	pr_debug("Waiting for request to complete\n");
@@ -150,12 +74,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	return ret;
 
 err_req:
-	if (sess)
-		kfree(sess);
-
-	if (op)
-		kfree(op);
-
+	kfree(sess);
 	kzfree(req);
 err:
 	return ret;
@@ -207,7 +126,7 @@ static struct miscdevice accel_dev = {
 int accel_dev_init(void)
 {
 	int ret;
-	
+
 	pr_debug("Initializing character device...\n");
 	ret = misc_register(&accel_dev);
 	if (unlikely(ret)) {

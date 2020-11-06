@@ -1,19 +1,4 @@
- /* Driver for Virtio crypto device.
-  *
-  * Copyright 2016 HUAWEI TECHNOLOGIES CO., LTD.
-  *
-  * This program is free software; you can redistribute it and/or modify
-  * it under the terms of the GNU General Public License as published by
-  * the Free Software Foundation; either version 2 of the License, or
-  * (at your option) any later version.
-  *
-  * This program is distributed in the hope that it will be useful,
-  * but WITHOUT ANY WARRANTY; without even the implied warranty of
-  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  * GNU General Public License for more details.
-  *
-  * You should have received a copy of the GNU General Public License
-  * along with this program; if not, see <http://www.gnu.org/licenses/>.
+ /* Driver for Virtio vaccel device.
   */
 
 #include <linux/err.h>
@@ -252,10 +237,10 @@ static int virtaccel_probe(struct virtio_device *vdev)
 	if (!vaccel)
 		return -ENOMEM;
 	
-	/* Add virtio crypto accel to global table */
+	/* Add virtio vaccel to global table */
 	err = virtaccel_devmgr_add_dev(vaccel);
 	if (err) {
-		dev_err(&vdev->dev, "Failed to add new virtio crypto device.\n");
+		dev_err(&vdev->dev, "Failed to add new virtio vaccel device.\n");
 		goto free;
 	}
 	vaccel->owner = THIS_MODULE;
