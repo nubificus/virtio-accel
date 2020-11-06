@@ -1,19 +1,4 @@
- /* Driver for Virtio crypto device.
-  *
-  * Copyright 2016 HUAWEI TECHNOLOGIES CO., LTD.
-  *
-  * This program is free software; you can redistribute it and/or modify
-  * it under the terms of the GNU General Public License as published by
-  * the Free Software Foundation; either version 2 of the License, or
-  * (at your option) any later version.
-  *
-  * This program is distributed in the hope that it will be useful,
-  * but WITHOUT ANY WARRANTY; without even the implied warranty of
-  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  * GNU General Public License for more details.
-  *
-  * You should have received a copy of the GNU General Public License
-  * along with this program; if not, see <http://www.gnu.org/licenses/>.
+ /* Driver for Virtio vaccel device.
   */
 
 #include <linux/err.h>
@@ -32,42 +17,41 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 	struct virtio_accel_req *req;
 	unsigned long flags;
 	unsigned int len;
-	int error;
 	unsigned int qid = vq->index;
 	//struct timespec ts2, ts;
-	
+
 	//ktime_get_ts(&ts2);
 	//ts = timespec_sub(ts2, ts1);
 	//printk("TIME PING-PONG: %lus%luns \r\n", ts.tv_sec, ts.tv_nsec);
-	
+
 	spin_lock_irqsave(&vaccel->vq[qid].lock, flags);
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
 			pr_debug("dataq callback: status=%u\n", req->status);
 			switch (req->status) {
-			case VIRTIO_ACCEL_OK:
-				req->ret = 0;
-				break;
-			case VIRTIO_ACCEL_INVSESS:
-			case VIRTIO_ACCEL_ERR:
-				req->ret = -EINVAL;
-				break;
-			case VIRTIO_ACCEL_BADMSG:
-				req->ret = -EBADMSG;
-				break;
-			default:
-				req->ret = -EIO;
-				break;
+				case VIRTIO_ACCEL_OK:
+					req->ret = 0;
+					break;
+				case VIRTIO_ACCEL_INVSESS:
+				case VIRTIO_ACCEL_ERR:
+					req->ret = -EINVAL;
+					break;
+				case VIRTIO_ACCEL_BADMSG:
+					req->ret = -EBADMSG;
+					break;
+				default:
+					req->ret = -EIO;
+					break;
 			}
-			
+
 			spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
 			complete_all(&req->completion);
 			spin_lock_irqsave(&vaccel->vq[qid].lock, flags);
 		}
 	} while (!virtqueue_enable_cb(vq));
 	spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
-	
+
 	//ktime_get_ts(&ts2);
 	//ts = timespec_sub(ts2, ts1);
 	//printk("TIME RECV: %lus%luns \r\n", ts.tv_sec, ts.tv_nsec);
@@ -103,10 +87,10 @@ static int virtaccel_find_vqs(struct virtio_accel *vaccel)
 	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0)
 	ret = virtio_find_vqs(vaccel->vdev, total_vqs, vqs, callbacks,
-				names, NULL);
+			names, NULL);
 #else
-	ret = vaccel->vdev->config->find_vqs(vaccel->vdev, total_vqs, 
-				vqs, callbacks, names);
+	ret = vaccel->vdev->config->find_vqs(vaccel->vdev, total_vqs,
+			vqs, callbacks, names);
 #endif
 	if (ret)
 		goto err_find;
@@ -172,7 +156,7 @@ static int virtaccel_update_status(struct virtio_accel *vaccel)
 	int err;
 
 	virtio_cread(vaccel->vdev,
-	    struct virtio_accel_conf, status, &status);
+			struct virtio_accel_conf, status, &status);
 
 	/*
 	 * Unknown status bits would be a host error and the driver
@@ -195,7 +179,7 @@ static int virtaccel_update_status(struct virtio_accel *vaccel)
 		err = virtaccel_dev_start(vaccel);
 		if (err) {
 			dev_err(&vaccel->vdev->dev,
-				"Failed to start virtio accel device.\n");
+					"Failed to start virtio accel device.\n");
 
 			return -EPERM;
 		}
@@ -221,19 +205,16 @@ static int virtaccel_probe(struct virtio_device *vdev)
 {
 	int err = -EFAULT;
 	struct virtio_accel *vaccel;
-	u32 max_data_queues = 0, max_cipher_key_len = 0;
-	u32 max_auth_key_len = 0;
-	u64 max_size = 0;
 
 	/*
-	if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
-		printk("VIRTIO PROBE NOT\n");
-		return -ENODEV;
-	}
-	*/
+	   if (!virtio_has_feature(vdev, VIRTIO_F_VERSION_1)) {
+	   printk("VIRTIO PROBE NOT\n");
+	   return -ENODEV;
+	   }
+	   */
 	if (!vdev->config->get) {
 		dev_err(&vdev->dev, "%s failure: config access disabled\n",
-			__func__);
+				__func__);
 		return -EINVAL;
 	}
 
@@ -248,14 +229,14 @@ static int virtaccel_probe(struct virtio_device *vdev)
 	}
 
 	vaccel = kzalloc_node(sizeof(*vaccel), GFP_KERNEL,
-					dev_to_node(&vdev->dev));
+			dev_to_node(&vdev->dev));
 	if (!vaccel)
 		return -ENOMEM;
-	
-	/* Add virtio crypto accel to global table */
+
+	/* Add virtio vaccel to global table */
 	err = virtaccel_devmgr_add_dev(vaccel);
 	if (err) {
-		dev_err(&vdev->dev, "Failed to add new virtio crypto device.\n");
+		dev_err(&vdev->dev, "Failed to add new virtio vaccel device.\n");
 		goto free;
 	}
 	vaccel->owner = THIS_MODULE;
@@ -288,8 +269,6 @@ free:
 static void virtaccel_free_unused_reqs(struct virtio_accel *vaccel)
 {
 	struct virtio_accel_req *req;
-	int i;
-	struct virtqueue *vq;
 
 	while ((req = virtqueue_detach_unused_buf(vaccel->vq[0].vq)) != NULL) {
 		kfree(req->sgs);
