@@ -52,7 +52,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 				goto err_req;
 			break;
 		case VACCEL_DO_OP:
-			ret = virtaccel_req_gen_operation(req);
+			ret = virtaccel_req_operation(req);
 			if (ret != -EINPROGRESS)
 				goto err_req;
 			break;
