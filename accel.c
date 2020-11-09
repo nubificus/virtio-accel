@@ -42,13 +42,14 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 		case VACCEL_SESS_CREATE:
-			ret = virtaccel_req_gen_create_session(req);
-			if (ret)
+			pr_err("IOCTL: VACCEL_SESS_CREATE\n");
+			ret = virtaccel_req_create_session(req);
+			if (ret != -EINPROGRESS)
 				goto err_req;
 			break;
 		case VACCEL_SESS_DESTROY:
-			ret = virtaccel_req_gen_destroy_session(req);
-			if (ret)
+			ret = virtaccel_req_destroy_session(req);
+			if (ret != -EINPROGRESS)
 				goto err_req;
 			break;
 		case VACCEL_DO_OP:
@@ -70,7 +71,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	pr_debug("Request completed\n");
 
 	ret = req->ret;
-	kzfree(req);	
+	kzfree(req);
 	return ret;
 
 err_req:
