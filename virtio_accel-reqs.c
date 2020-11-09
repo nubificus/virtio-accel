@@ -160,7 +160,7 @@ int sg_add_vaccel_args(struct scatterlist **sgs, struct virtio_accel_arg *vargs,
 	return 0;
 }
 
-int virtaccel_req_gen_create_session(struct virtio_accel_req *req)
+int virtaccel_req_create_session(struct virtio_accel_req *req)
 {
 	struct scatterlist hdr_sg, sid_sg, status_sg, **sgs;
 	struct virtio_accel *vaccel = req->vaccel;
@@ -230,7 +230,7 @@ free_request:
 	return ret;
 }
 
-int virtaccel_req_gen_destroy_session(struct virtio_accel_req *req)
+int virtaccel_req_destroy_session(struct virtio_accel_req *req)
 {
 	struct scatterlist hdr_sg, status_sg, *sgs[2];
 	struct virtio_accel *vaccel = req->vaccel;
