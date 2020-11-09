@@ -17,8 +17,6 @@ int prepare_virtio_args(struct virtio_accel_arg **vargs,
 	struct virtio_accel_arg *v;
 	int i, ret;
 
-	pr_err("preparing %u arguments", nr_args);
-
 	if (!nr_args) {
 		*vargs = NULL;
 		return 0;
@@ -42,7 +40,6 @@ int prepare_virtio_args(struct virtio_accel_arg **vargs,
 	}
 
 	for (i = 0; i < nr_args; ++i) {
-		pr_err("arg %u: len:%u", i, args[i].len);
 		v[i].len = cpu_to_virtio32(vdev, args[i].len);
 		v[i].usr_buf = args[i].buf;
 		v[i].buf = kzalloc_node(args[i].len, GFP_ATOMIC,
@@ -77,9 +74,7 @@ int copy_virtio_args(struct virtio_accel_arg *vargs, u32 nr_args)
 {
 	int i;
 
-	pr_err("copying user data to virtio request");
 	for (i = 0; i < nr_args; ++i) {
-		pr_err("copying argument %u len:%u", i, vargs[i].len);
 		if (unlikely(copy_from_user(vargs[i].buf, vargs[i].usr_buf,
 						vargs[i].len)))
 			return -EFAULT;
@@ -113,9 +108,6 @@ int prepare_virtio_request(struct virtio_device *vdev, u32 op_type,
 	virtio->op.in_nr = cpu_to_virtio32(vdev, op->in_nr);
 	virtio->op.out_nr = cpu_to_virtio32(vdev, op->out_nr);
 
-	pr_err("preparing request op_type %u in_nr: %u out_nr: %u\n",
-			virtio->op_type, virtio->op.in_nr, virtio->op.out_nr);
-
 	ret = prepare_virtio_args(&virtio->op.in, usr_sess->op.in,
 			virtio->op.in_nr, vdev);
 	if (ret)
@@ -129,8 +121,6 @@ int prepare_virtio_request(struct virtio_device *vdev, u32 op_type,
 	ret = copy_virtio_args(virtio->op.out, virtio->op.out_nr);
 	if (ret)
 		goto free_out;
-
-	pr_err("done preparing request");
 
 	return 0;
 
@@ -179,8 +169,6 @@ int virtaccel_req_create_session(struct virtio_accel_req *req)
 	int ret;
 
 	h->op_type = cpu_to_virtio32(vdev, VIRTIO_ACCEL_CREATE_SESSION);
-	pr_err("header session_id:%u op_type:%u in_nr:%u out_nr:%u",
-			h->id, h->op_type, h->op.in_nr, h->op.out_nr);
 
 	/* virtio header */
 	sg_add_vaccel_one(&sgs[0], &hdr_sg, h, sizeof(*h));
@@ -212,7 +200,6 @@ int virtaccel_req_destroy_session(struct virtio_accel_req *req)
 	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_session *sess = req->priv;
-	int ret;
 
 	h->id = cpu_to_virtio32(vdev, sess->id);
 	h->op_type = cpu_to_virtio32(vdev, VIRTIO_ACCEL_DESTROY_SESSION);
@@ -268,9 +255,6 @@ int virtaccel_req_operation(struct virtio_accel_req *req)
 	/* result status */
 	sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &status_sg, &req->status,
 			sizeof(req->status));
-
-	pr_err("do_op: in_nr:%u out_nr:%u in_nsgs:%u out_nsgs:%u",
-			h->op.in_nr, h->op.out_nr, in_nsgs, out_nsgs);
 
 	req->sgs = sgs;
 	req->out_sgs = out_nsgs;
@@ -330,8 +314,6 @@ int virtaccel_write_user_output(struct virtio_accel_arg *varg, u32 nr_arg)
 		return 0;
 
 	for (i = 0; i < nr_arg; ++i) {
-		pr_err("Copying in argument %u back to user len:%u", i,
-				varg[i].len);
 		if (unlikely(copy_to_user(varg[i].usr_buf, varg[i].buf,
 					varg[i].len)))
 			return -EINVAL;
@@ -346,16 +328,12 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 	struct accel_session *sess;
 	int ret;
 
-	pr_err("result: %u", req->status);
-
 	if (req->status != VIRTIO_ACCEL_OK)
 		return;
 
 	switch (h->op_type) {
 		case VIRTIO_ACCEL_CREATE_SESSION:
 			sess = req->priv;
-			pr_err("handle req: succesfully created session %u\n",
-					sess->id);
 			ret = virtaccel_write_user_output(h->op.in, h->op.in_nr);
 			if (ret) {
 				req->ret = -EINVAL;
@@ -372,7 +350,6 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 		case VIRTIO_ACCEL_DESTROY_SESSION:
 			break;
 		case VIRTIO_ACCEL_DO_OP:
-			pr_err("handle req: successfully executed op");
 			ret = virtaccel_write_user_output(h->op.in, h->op.in_nr);
 			if (ret) {
 				req->ret = -EINVAL;
@@ -381,7 +358,6 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 
 			break;
 		default:
-			pr_err("hadle req: invalid op returned\n");
 			req->ret = -EBADMSG;
 			break;
 	}
@@ -390,22 +366,17 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 int virtaccel_do_req(struct virtio_accel_req *req)
 {
 	struct virtio_accel *va = req->vaccel;
-	int ret, i;
+	int ret;
 	unsigned long flags;
 
 	init_completion(&req->completion);
 
 	// select vq[0] explicitly for now
-	pr_err("Kicking virtqueue. out_sgs:%u in_sgs:%u", req->out_sgs, req->in_sgs);
-	for (i = 0; i < req->out_sgs + req->in_sgs; ++i) {
-		pr_err("sg[%u] == %p\n", i, req->sgs[i]);
-	}
 	spin_lock_irqsave(&va->vq[0].lock, flags);
 	ret = virtqueue_add_sgs(va->vq[0].vq, req->sgs, req->out_sgs,
 			req->in_sgs, req, GFP_ATOMIC);
 	virtqueue_kick(va->vq[0].vq);
 	spin_unlock_irqrestore(&va->vq[0].lock, flags);
-	pr_err("do_req ret: %d\n", ret);
 	if (unlikely(ret < 0)) {
 		virtaccel_clear_req(req);
 		return ret;

@@ -42,7 +42,6 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 		case VACCEL_SESS_CREATE:
-			pr_err("IOCTL: VACCEL_SESS_CREATE\n");
 			ret = virtaccel_req_create_session(req);
 			if (ret != -EINPROGRESS)
 				goto err_req;
