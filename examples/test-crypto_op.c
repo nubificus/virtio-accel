@@ -85,8 +85,8 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 {
 	struct accel_op *op = &sess->op;
 	struct vaccelrt_hdr sess_hdr;
-	struct accel_arg op_args[2];
-	char *buffer;
+	struct accel_arg op_args[3];
+	unsigned char *buf;
 	static int val = 23;
 	int tt = 0, ret;
 	struct timeval start, end;
@@ -95,57 +95,60 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 	double secs, ddata, dspeed;
 	char metric[16];
 
-	if (!(buffer = malloc(chunksize))) {
+	if (!(buf = malloc(chunksize))) {
 		perror("malloc()");
 		return 1;
 	}
+	memset(buf, val++, chunksize);
 
 	printf("Working in chunks of %d bytes:\n", chunksize);
 	fflush(stdout);
 
-	memset(buffer, val++, chunksize);
-
 	must_finish = 0;
-//	alarm(5);
+	alarm(2);
 
 	gettimeofday(&start, NULL);
-//	do {
+	do {
+
+		memset(&sess_hdr, 0, sizeof(sess_hdr));
+		sess_hdr.u.aes.op = VACCELRT_AES_ENCRYPT;
 		memset(op, 0, sizeof(*op));
 		op_args[0].len = sizeof(sess_hdr);
-		op_args[0].buf = (__u8 *)&sess_hdr;
+		op_args[0].buf = &sess_hdr;
 		op_args[1].len = chunksize;
-		op_args[1].buf = (unsigned char *)buffer;
+		op_args[1].buf = (__u8 *)buf;
+		op_args[2].len = chunksize;
+		op_args[2].buf = (__u8 *)buf;
 		op->in_nr = 1;
-		op->out_nr = 1;
-		op->in = &op_args[1];
+		op->out_nr = 2;
 		op->out = &op_args[0];
+		op->in = &op_args[2];
 
-	clock_gettime(CLOCK_MONOTONIC, &start1);
+		clock_gettime(CLOCK_MONOTONIC, &start1);
 		if (ret = ioctl(fdc, VACCEL_DO_OP, sess)) {
 			perror("ioctl(VACCEL_DO_OP)");
-			printf("%d\n", ret);
 			return 1;
 		}
-	clock_gettime(CLOCK_MONOTONIC, &end1);
-	ttotal += udifftimeval1(start1, end1);
-	tt++;
+		clock_gettime(CLOCK_MONOTONIC, &end1);
+		ttotal += udifftimeval1(start1, end1);
+		tt++;
 
 		total+=chunksize;
 		//if (total > 128 * 1048576) {
-		//	must_finish=1;
+		//  must_finish=1;
 		//}
-//	} while(must_finish==0);
+	} while(must_finish==0);
 	gettimeofday(&end, NULL);
 
 	secs = udifftimeval(start, end)/ 1000000.0;
 
 	value2human(si, total, secs, &ddata, &dspeed, metric);
-	printf("\tioctl: %.6f ms, %d, %.6f s\n", ttotal / (tt * 1000000.0),
+	printf("\top: %.6f ms, %d, %.6f s\n", ttotal / (tt * 1000000.0),
 			tt, ttotal / 1000000000.0);
 	printf ("\tdone. %.2f %s in %.2f secs: ", ddata, metric, secs);
 	printf ("%.2f %s/sec\n", dspeed, metric);
 
-	free(buffer);
+	free(buf);
 	return 0;
 }
 
@@ -153,8 +156,11 @@ int main(int argc, char** argv)
 {
 	int fd, i;
 	struct accel_session sess;
+	struct accel_op *op = &sess.op;
 	struct vaccelrt_hdr sess_hdr;
-	struct accel_arg sess_outargs[1];
+	struct accel_arg sess_outargs[2];
+	char keybuf[32];
+	size_t keylen;
 
 	signal(SIGALRM, alarm_handler);
 	
@@ -174,11 +180,11 @@ int main(int argc, char** argv)
 	}
 	
 	fprintf(stderr, "\nTesting:\n");
-	sess_hdr.type = VACCELRT_SESS_NONE;
+	sess_hdr.type = VACCELRT_SESS_AES_ECB;
 	sess_outargs[0].buf = (__u8 *)&sess_hdr;
 	sess_outargs[0].len = sizeof(struct vaccelrt_hdr);
 
-	memset(&sess, 0, sizeof(sess));
+	memset(&sess, 0, sizeof(sess));	
 	sess.op.in_nr = 0;
 	sess.op.out_nr = 1;
 	sess.op.out = sess_outargs;
@@ -188,8 +194,28 @@ int main(int argc, char** argv)
 		perror("ioctl(VACCEL_SESS_CREATE)");
 		return 1;
 	}
-	
-	for (i = 512; i <= (512); i *= 2) {
+
+	keylen = 16;
+	memset(keybuf, 0x42, keylen);
+
+	memset(&sess_hdr, 0, sizeof(sess_hdr));
+	memset(op, 0, sizeof(*op));
+	sess_hdr.u.aes.op = VACCELRT_AES_SET_KEY;
+	sess_outargs[0].buf = (__u8 *)&sess_hdr;
+	sess_outargs[0].len = sizeof(struct vaccelrt_hdr);
+	sess_outargs[1].buf = (__u8 *)keybuf;
+	sess_outargs[1].len = keylen;
+	op->in_nr = 0;
+	op->out_nr = 2;
+	op->out = &sess_outargs[0];
+	op->in = NULL;
+
+	if (ioctl(fd, VACCEL_DO_OP, &sess)) {
+		perror("ioctl(VACCEL_DO_OP)");
+		return 1;
+	}
+
+	for (i = 64; i <= (1024); i *= 2) {
 		if (process_data(&sess, fd, i))
 			break;
 	}
@@ -198,7 +224,7 @@ int main(int argc, char** argv)
 		perror("ioctl(VACCEL_SESS_DESTROY)");
 		return 1;
 	}
-	
+
 	close(fd);
 	return 0;
 }

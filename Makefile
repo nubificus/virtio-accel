@@ -29,8 +29,7 @@ all: modules
 modules:
 	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules
 
-.PHONY: all clean test_sw test_km
+.PHONY: all clean
 
 clean:
 	$(MAKE) $(KMAKE_OPTS) clean
-	rm -f $(USR_TESTS)

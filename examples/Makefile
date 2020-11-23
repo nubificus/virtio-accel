@@ -34,3 +34,8 @@ test_km: LDFLAGS := $(LDFLAGS) -L.
 export LDFLAGS
 test_km:
 	$(MAKE) -C kmeans $(MAKECMDGOALS)
+
+.PHONY: clean test_sw test_km
+
+clean:
+	rm -f $(USR_TESTS)
