@@ -83,9 +83,9 @@ int verify_data(unsigned int k, unsigned int m, unsigned int n, float *a,
 
 int process_data(struct accel_session *sess, int fdc, int chunksize)
 {
-	struct accel_op op;
+	struct accel_op *op = &sess->op;
 	struct vaccelrt_hdr sess_hdr;
-	struct accel_gen_op_arg op_args[4];
+	struct accel_arg op_args[4];
 	float *a, *b, *c;
 	int ret;
 	unsigned int k, m, n;
@@ -135,8 +135,7 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 		sess_hdr.u.mul.k = htonl(k);
 		sess_hdr.u.mul.m = htonl(m);
 		sess_hdr.u.mul.n = htonl(n);
-		memset(&op, 0, sizeof(op));
-		op.session_id = sess->id;
+		memset(op, 0, sizeof(*op));
 		op_args[0].len = sizeof(sess_hdr);
 		op_args[0].buf = (__u8 *)&sess_hdr;
 		op_args[1].len = len_a;
@@ -145,13 +144,13 @@ int process_data(struct accel_session *sess, int fdc, int chunksize)
 		op_args[2].buf = (unsigned char *)b;
 		op_args[3].len = len_c;
 		op_args[3].buf = (unsigned char *)c;
-		op.u.gen.in_nr = 1;
-		op.u.gen.out_nr = 3;
-		op.u.gen.in = &op_args[3];
-		op.u.gen.out = &op_args[0];
+		op->in_nr = 1;
+		op->out_nr = 3;
+		op->in = &op_args[3];
+		op->out = &op_args[0];
 
-		if (ret = ioctl(fdc, ACCIOC_GEN_DO_OP, &op)) {
-			perror("ioctl(ACCIOC_GEN_DO_OP)");
+		if (ret = ioctl(fdc, VACCEL_DO_OP, sess)) {
+			perror("ioctl(VACCEL_DO_OP)");
 			printf("%d\n", ret);
 			return 1;
 		}
@@ -171,7 +170,7 @@ int main(int argc, char** argv)
 	int fd;
 	struct accel_session sess;
 	struct vaccelrt_hdr sess_hdr;
-	struct accel_gen_op_arg sess_outargs[1];
+	struct accel_arg sess_outargs[1];
 
 	signal(SIGALRM, alarm_handler);
 	
@@ -186,20 +185,20 @@ int main(int argc, char** argv)
 	sess_outargs[0].len = sizeof(struct vaccelrt_hdr);
 
 	memset(&sess, 0, sizeof(sess));
-	sess.u.gen.in_nr = 0;
-	sess.u.gen.out_nr = 1;
-	sess.u.gen.out = sess_outargs;
-	sess.u.gen.in = NULL;
+	sess.op.in_nr = 0;
+	sess.op.out_nr = 1;
+	sess.op.out = sess_outargs;
+	sess.op.in = NULL;
 
-	if (ioctl(fd, ACCIOC_GEN_SESS_CREATE, &sess)) {
-		perror("ioctl(ACCIOC_GEN_SESS_CREATE)");
+	if (ioctl(fd, VACCEL_SESS_CREATE, &sess)) {
+		perror("ioctl(VACCEL_SESS_CREATE)");
 		return 1;
 	}
 	
 	process_data(&sess, fd, 1024);
 	
-	if (ioctl(fd, ACCIOC_GEN_SESS_DESTROY, &sess)) {
-		perror("ioctl(ACCIOC_GEN_SESS_DESTROY)");
+	if (ioctl(fd, VACCEL_SESS_DESTROY, &sess)) {
+		perror("ioctl(VACCEL_SESS_DESTROY)");
 		return 1;
 	}
 	
