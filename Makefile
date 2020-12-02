@@ -20,6 +20,9 @@ endif
 ifneq ($(CROSS_COMPILE),)
 KMAKE_OPTS += CROSS_COMPILE=$(CROSS_COMPILE)
 endif
+ifneq ($(INSTALL_MOD_PATH),)
+KMAKE_OPTS += INSTALL_MOD_PATH=$(INSTALL_MOD_PATH)
+endif
 
 obj-m := virtio_accel.o
 virtio_accel-objs := \
@@ -33,6 +36,9 @@ all: modules
 
 modules:
 	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules
+
+modules_install:
+	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules_install
 
 tests: $(USR_TESTS) test_sw test_km
 
