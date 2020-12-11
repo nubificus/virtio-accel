@@ -30,19 +30,19 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
 			pr_debug("dataq callback: status=%u\n", req->status);
 			switch (req->status) {
-				case VIRTIO_ACCEL_OK:
-					req->ret = 0;
-					break;
-				case VIRTIO_ACCEL_INVSESS:
-				case VIRTIO_ACCEL_ERR:
-					req->ret = -EINVAL;
-					break;
-				case VIRTIO_ACCEL_BADMSG:
-					req->ret = -EBADMSG;
-					break;
-				default:
-					req->ret = -EIO;
-					break;
+			case VIRTIO_ACCEL_OK:
+				req->ret = 0;
+				break;
+			case VIRTIO_ACCEL_INVSESS:
+			case VIRTIO_ACCEL_ERR:
+				req->ret = -EINVAL;
+				break;
+			case VIRTIO_ACCEL_BADMSG:
+				req->ret = -EBADMSG;
+				break;
+			default:
+				req->ret = -EIO;
+				break;
 			}
 
 			spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);

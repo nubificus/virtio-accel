@@ -41,25 +41,25 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	req->vaccel = vaccel;
 
 	switch (cmd) {
-		case VACCEL_SESS_CREATE:
-			ret = virtaccel_req_create_session(req);
-			if (ret != -EINPROGRESS)
-				goto err_req;
-			break;
-		case VACCEL_SESS_DESTROY:
-			ret = virtaccel_req_destroy_session(req);
-			if (ret != -EINPROGRESS)
-				goto err_req;
-			break;
-		case VACCEL_DO_OP:
-			ret = virtaccel_req_operation(req);
-			if (ret != -EINPROGRESS)
-				goto err_req;
-			break;
-		default:
-			pr_err("Invalid IOCTL\n");
-			ret = -EFAULT;
-			goto err;
+	case VACCEL_SESS_CREATE:
+		ret = virtaccel_req_create_session(req);
+		if (ret != -EINPROGRESS)
+			goto err_req;
+		break;
+	case VACCEL_SESS_DESTROY:
+		ret = virtaccel_req_destroy_session(req);
+		if (ret != -EINPROGRESS)
+			goto err_req;
+		break;
+	case VACCEL_DO_OP:
+		ret = virtaccel_req_operation(req);
+		if (ret != -EINPROGRESS)
+			goto err_req;
+		break;
+	default:
+		pr_err("Invalid IOCTL\n");
+		ret = -EFAULT;
+		goto err;
 	}
 
 	pr_debug("Waiting for request to complete\n");
