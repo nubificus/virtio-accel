@@ -1,12 +1,15 @@
-USR_TESTS := test-dummy_op test-mul_op test-mul_op-verify test-crypto_op \
-	test-crypto_op-verify test-class_op test-det_op test-seg_op
+USR_TESTS_EXTRA := test_sw test_km
+USR_TESTS := test-dummy_op test-mul_op test-crypto_op \
+	test-class_op test-det_op test-seg_op
 
 CPPFLAGS := -I.. -Wall
 USR_CPPFLAGS := $(USR_CPPFLAGS)
 
-tests: $(USR_TESTS) test_sw test_km
+tests: $(USR_TESTS)
 
-test-%: test-%.c
+test-%.o: test-%.c
+	$(CC) $(USR_CFLAGS) ${CPPFLAGS} -o $@ -c $^
+test-%_op: test-%_op.o test-common.o
 	$(CC) $(USR_CFLAGS) ${CPPFLAGS} -o $@ $^
 
 clean: test_sw
@@ -38,4 +41,4 @@ test_km:
 .PHONY: clean test_sw test_km
 
 clean:
-	rm -f $(USR_TESTS)
+	rm -f $(USR_TESTS) $(USR_TESTS_EXTRA)
