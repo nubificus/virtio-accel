@@ -1,6 +1,6 @@
 name: Create firecracker vmlinux
 
-on: 
+on:
   push:
     tags:
       - v*
@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Install building deps
         run: |
