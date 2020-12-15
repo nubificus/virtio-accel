@@ -1,0 +1,71 @@
+name: Create firecracker vmlinux & virtio module
+
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install building deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libz-dev bin86 bison flex bc libelf-dev libssl-dev wget zip
+
+        # This is hardcoded for now in the version of linux that Firecracker works with
+      - name: Set kernel version
+        run: echo "RELEASE_VERSION=v4.20" >> $GITHUB_ENV
+
+      - name: Fetch virtio-accel
+        uses: actions/checkout@v2
+        with:
+          path: virtio-accel
+
+      - name: Fetch linux kernel
+        uses: actions/checkout@v2
+        with:
+          repository: torvalds/linux
+          ref: ${{ env.RELEASE_VERSION }}
+          fetch-depth: 1
+          path: linux
+
+      - name: Fetch firecracker config & build
+        working-directory: linux
+        run: |
+          wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/master/resources/microvm-kernel-x86_64.config -O arch/x86/configs/microvm.config
+          touch .config
+          make microvm.config
+          make vmlinux -j$(nproc)
+
+      - name: Build virtio-accel
+        working-directory: virtio-accel
+        run: make KDIR=${GITHUB_WORKSPACE}/linux
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: virtio-accel-${{ github.event.pull_request.head.sha }}
+          path: |
+            linux/vmlinux
+            virtio-accel/virtio_accel.ko
+
+  upload_artifact:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: minio/mc
+      env:
+        NBFC_S3_ACCESS: ${{ secrets.AWS_ACCESS_KEY }}
+        NBFC_S3_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: virtio-accel-${{ github.event.pull_request.head.sha }}
+
+      - name: Upload artifact to s3
+        run: |
+          mc alias set nbfc-rook https://s3.nubificus.co.uk $NBFC_S3_ACCESS $NBFC_S3_SECRET
+          mc cp -r linux nbfc-rook/nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/
+          mc cp -r virtio-accel/virtio_accel.ko nbfc-rook/nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/linux/
