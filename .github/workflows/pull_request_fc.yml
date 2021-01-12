@@ -39,7 +39,7 @@ jobs:
 
       - name: Build virtio-accel
         working-directory: virtio-accel
-        run: make KDIR=${GITHUB_WORKSPACE}/linux
+        run: make KDIR=${GITHUB_WORKSPACE}/linux ZC=0
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2
