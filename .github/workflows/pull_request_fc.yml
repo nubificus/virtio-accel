@@ -4,7 +4,11 @@ on: [pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "${{ matrix.arch }}" ]
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+      fail-fast: false
 
     steps:
       - name: Install building deps
@@ -30,42 +34,50 @@ jobs:
           path: linux
 
       - name: Fetch firecracker config & build
+        id: build-vmlinux
         working-directory: linux
         run: |
-          wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/master/resources/microvm-kernel-x86_64.config -O arch/x86/configs/microvm.config
-          touch .config
-          make microvm.config
-          make vmlinux -j$(nproc)
+          if [[ "${{ matrix.arch }}" == "aarch64" ]]
+          then
+            wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/master/resources/microvm-kernel-arm64.config
+            wget https://raw.githubusercontent.com/nubificus/fc-aarch64-guest-build/main/aarch64_config.patch
+            patch -p0 < aarch64_config.patch
+            mv microvm-kernel-arm64.config arch/arm64/configs/microvm.config
+            echo '::set-output name=artifact_pathing::arch/arm64/boot/Image'
+            touch .config
+            make microvm.config
+            make Image -j$(nproc)
+            sudo mv arch/arm64/boot/Image vmlinux
+          else
+            wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/master/resources/microvm-kernel-x86_64.config -O arch/x86/configs/microvm.config
+            echo '::set-output name=artifact_pathing::vmlinux'
+            touch .config
+            make microvm.config
+            make vmlinux -j$(nproc)
+          fi
+          
 
       - name: Build virtio-accel
+        id: build-virtio
         working-directory: virtio-accel
-        run: make KDIR=${GITHUB_WORKSPACE}/linux ZC=0
+        run: make KDIR=../linux ZC=0
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
+      - name: Upload linux Image
+        id: upload-image
+        uses: cloudkernels/minio-upload@master
         with:
-          name: virtio-accel-${{ github.event.pull_request.head.sha }}
-          path: |
-            linux/vmlinux
-            virtio-accel/virtio_accel.ko
+          url: https://s3.nubificus.co.uk
+          access-key: ${{ secrets.AWS_ACCESS_KEY }}
+          secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          local-path: linux/vmlinux
+          remote-path: nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/${{ matrix.arch }}/linux/
 
-  upload_artifact:
-    needs: build
-    runs-on: ubuntu-latest
-    container:
-      image: minio/mc
-      env:
-        NBFC_S3_ACCESS: ${{ secrets.AWS_ACCESS_KEY }}
-        NBFC_S3_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v2
+      - name: Upload virtio
+        id: upload-virtio
+        uses: cloudkernels/minio-upload@master
         with:
-          name: virtio-accel-${{ github.event.pull_request.head.sha }}
-
-      - name: Upload artifact to s3
-        run: |
-          mc alias set nbfc-rook https://s3.nubificus.co.uk $NBFC_S3_ACCESS $NBFC_S3_SECRET
-          mc cp -r linux nbfc-rook/nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/
-          mc cp -r virtio-accel/virtio_accel.ko nbfc-rook/nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/linux/
+          url: https://s3.nubificus.co.uk
+          access-key: ${{ secrets.AWS_ACCESS_KEY }}
+          secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          local-path: virtio-accel/virtio_accel.ko
+          remote-path: nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/${{ matrix.arch }}/linux/
