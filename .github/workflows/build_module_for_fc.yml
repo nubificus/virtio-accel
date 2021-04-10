@@ -1,6 +1,10 @@
 name: Create firecracker vmlinux & virtio module
 
-on: [pull_request]
+on:
+  pull_request:
+  push:
+    branches:
+      - master
 
 jobs:
   build:
@@ -11,6 +15,15 @@ jobs:
       fail-fast: false
 
     steps:
+      - name: Find SHA
+        run: |
+          if [[ "${{github.event.pull_request.head.sha}}" != "" ]]
+          then
+            echo "ARTIFACT_SHA=$(echo ${{github.event.pull_request.head.sha}})" >> $GITHUB_ENV
+          else
+            echo "ARTIFACT_SHA=$(echo ${{github.sha}})" >> $GITHUB_ENV
+          fi
+
       - name: Install building deps
         run: |
           sudo apt-get update
@@ -55,7 +68,7 @@ jobs:
             make microvm.config
             make vmlinux -j$(nproc)
           fi
-          
+
 
       - name: Build virtio-accel
         id: build-virtio
@@ -70,7 +83,7 @@ jobs:
           access-key: ${{ secrets.AWS_ACCESS_KEY }}
           secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           local-path: linux/vmlinux
-          remote-path: nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/${{ matrix.arch }}/linux/
+          remote-path: nbfc-assets/github/virtio-accel/${{ env.ARTIFACT_SHA }}/${{ matrix.arch }}/linux/
 
       - name: Upload virtio
         id: upload-virtio
@@ -80,4 +93,4 @@ jobs:
           access-key: ${{ secrets.AWS_ACCESS_KEY }}
           secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           local-path: virtio-accel/virtio_accel.ko
-          remote-path: nbfc-assets/github/virtio-accel/${{ github.event.pull_request.head.sha }}/${{ matrix.arch }}/linux/
+          remote-path: nbfc-assets/github/virtio-accel/${{ env.ARTIFACT_SHA }}/${{ matrix.arch }}/linux/
