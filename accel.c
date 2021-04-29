@@ -7,6 +7,7 @@
 #include <linux/virtio.h>
 #include <linux/virtio_config.h>
 #include <linux/slab.h>
+#include <linux/version.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"
@@ -70,12 +71,20 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	pr_debug("Request completed\n");
 
 	ret = req->ret;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,0)
 	kzfree(req);
+#else
+	kfree_sensitive(req);
+#endif
 	return ret;
 
 err_req:
 	kfree(sess);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,0)
 	kzfree(req);
+#else
+	kfree_sensitive(req);
+#endif
 err:
 	return ret;
 }
