@@ -27,7 +27,7 @@ jobs:
       - name: Install building deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libz-dev bin86 bison flex bc libelf-dev libssl-dev wget zip
+          sudo apt-get install -y build-essential libz-dev bin86 bison flex bc libelf-dev libssl-dev wget zip gcc-8
 
         # This is hardcoded for now in the version of linux that Firecracker works with
       - name: Set kernel version
@@ -50,6 +50,7 @@ jobs:
         id: build-vmlinux
         working-directory: linux
         run: |
+          sudo ln -sf /usr/bin/gcc-8 /usr/bin/gcc
           if [[ "${{ matrix.arch }}" == "aarch64" ]]
           then
             wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/master/resources/microvm-kernel-arm64.config
@@ -66,14 +67,18 @@ jobs:
             echo '::set-output name=artifact_pathing::vmlinux'
             touch .config
             make microvm.config
-            make vmlinux -j$(nproc)
+            CC=gcc-8 make vmlinux -j$(nproc)
           fi
+          sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
 
 
       - name: Build virtio-accel
         id: build-virtio
         working-directory: virtio-accel
-        run: make KDIR=../linux ZC=0
+        run: |
+          sudo ln -sf /usr/bin/gcc-8 /usr/bin/gcc
+          make KDIR=../linux ZC=0
+          sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
 
       - name: Upload linux Image
         id: upload-image
