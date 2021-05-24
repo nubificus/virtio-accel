@@ -499,13 +499,11 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 			return;
 		}
 
-#ifndef ZC
 		ret = copy_to_user(req->usr, sess, sizeof(*sess));
 		if (unlikely(ret)) {
 			req->ret = -EINVAL;
 			return;
 		}
-#endif
 		break;
 	case VIRTIO_ACCEL_DESTROY_SESSION:
 		break;
