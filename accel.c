@@ -71,7 +71,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	pr_debug("Request completed\n");
 
 	ret = req->ret;
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
 	kzfree(req);
 #else
 	kfree_sensitive(req);
@@ -80,7 +80,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 err_req:
 	kfree(sess);
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
 	kzfree(req);
 #else
 	kfree_sensitive(req);
