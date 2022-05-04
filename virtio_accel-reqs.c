@@ -45,7 +45,7 @@ static void virtaccel_free_buf(struct virtio_accel_arg *v)
 	virtaccel_unmap_user_buf((struct sg_table *)v->buf,
 				(struct page **)v->usr_pages, v->usr_npages);
 #else
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
 	kzfree(v->buf);
 #else
 	kfree_sensitive(v->buf);
@@ -103,7 +103,7 @@ free_args:
 	kfree(args);
 	return ret;
 free_vargs:
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
 	kzfree(v);
 #else
 	kfree_sensitive(v);
@@ -136,7 +136,7 @@ static void virtaccel_cleanup_args(struct virtio_accel_arg *vargs, u32 nr_args)
 	for (i = 0; i < nr_args; ++i)
 		virtaccel_free_buf(&vargs[i]);
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
 	kzfree(vargs);
 #else
 	kfree_sensitive(vargs);

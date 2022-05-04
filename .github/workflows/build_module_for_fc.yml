@@ -31,7 +31,7 @@ jobs:
 
         # This is hardcoded for now in the version of linux that Firecracker works with
       - name: Set kernel version
-        run: echo "RELEASE_VERSION=v4.20" >> $GITHUB_ENV
+        run: echo "RELEASE_VERSION=v5.10" >> $GITHUB_ENV
 
       - name: Fetch virtio-accel
         uses: actions/checkout@v2
@@ -53,21 +53,22 @@ jobs:
           sudo ln -sf /usr/bin/gcc-8 /usr/bin/gcc
           if [[ "${{ matrix.arch }}" == "aarch64" ]]
           then
-            wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/master/resources/microvm-kernel-arm64.config
+            wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-arm64-5.10.config
             wget https://raw.githubusercontent.com/nubificus/fc-aarch64-guest-build/main/aarch64_config.patch
             patch -p0 < aarch64_config.patch
-            mv microvm-kernel-arm64.config arch/arm64/configs/microvm.config
+            mv microvm-kernel-arm64-5.10.config arch/arm64/configs/microvm.config
             echo '::set-output name=artifact_pathing::arch/arm64/boot/Image'
             touch .config
             make microvm.config
-            make Image -j$(nproc)
+            make Image -j$(nproc) 
+            make modules -j$(nproc) 
             sudo mv arch/arm64/boot/Image vmlinux
           else
-            wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/master/resources/microvm-kernel-x86_64.config -O arch/x86/configs/microvm.config
+            wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-x86_64-5.10.config -O arch/x86/configs/microvm.config
             echo '::set-output name=artifact_pathing::vmlinux'
             touch .config
-            make microvm.config
-            CC=gcc-8 make vmlinux -j$(nproc)
+            make microvm.config CONFIG_MODULES=y
+            CC=gcc-8 make -j$(nproc)
           fi
           sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
 
