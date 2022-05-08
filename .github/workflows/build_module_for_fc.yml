@@ -63,12 +63,14 @@ jobs:
             make Image -j$(nproc) 
             make modules -j$(nproc) 
             sudo mv arch/arm64/boot/Image vmlinux
+            sudo cp arch/arm64/boot/Image.gz vmlinuz
           else
             wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-x86_64-5.10.config -O arch/x86/configs/microvm.config
             echo '::set-output name=artifact_pathing::vmlinux'
             touch .config
             make microvm.config CONFIG_MODULES=y
             CC=gcc-8 make -j$(nproc)
+            sudo cp arch/x86_64/boot/bzImage vmlinuz
           fi
           sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
 
@@ -89,6 +91,16 @@ jobs:
           access-key: ${{ secrets.AWS_ACCESS_KEY }}
           secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           local-path: linux/vmlinux
+          remote-path: nbfc-assets/github/virtio-accel/${{ env.ARTIFACT_SHA }}/${{ matrix.arch }}/linux/
+
+      - name: Upload compressed linux Image
+        id: upload-zimage
+        uses: cloudkernels/minio-upload@master
+        with:
+          url: https://s3.nubificus.co.uk
+          access-key: ${{ secrets.AWS_ACCESS_KEY }}
+          secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          local-path: linux/vmlinuz
           remote-path: nbfc-assets/github/virtio-accel/${{ env.ARTIFACT_SHA }}/${{ matrix.arch }}/linux/
 
       - name: Upload virtio
