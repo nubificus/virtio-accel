@@ -3,13 +3,17 @@ PWD := $(shell pwd)
 KVERBOSE = 'V=1'
 DEBUG ?= 0
 ZC ?= 1
+TIMERS ?= 1
 
-#EXTRA_CFLAGS += -Wno-unused-variable
+#EXTRA_CFLAGS +=
 ifeq ($(DEBUG),1)
   EXTRA_CFLAGS += -g -DDEBUG
 endif
 ifeq ($(ZC),1)
 EXTRA_CFLAGS += -DZC
+endif
+ifeq ($(TIMERS),1)
+EXTRA_CFLAGS += -DTIMERS
 endif
 
 KMAKE_OPTS := -C $(KDIR) M=$(CURDIR)
@@ -29,6 +33,8 @@ virtio_accel-objs := \
 	virtio_accel-mgr.o \
 	virtio_accel-reqs.o \
 	virtio_accel-zc.o \
+	virtio_accel-session.o \
+	virtio_accel-timers.o \
 	accel.o
 
 all: modules
