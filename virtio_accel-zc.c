@@ -9,7 +9,6 @@
 #include "accel.h"
 #include "virtio_accel-common.h"
 
-#define PAGEOFFSET(buf) ((unsigned long)buf & ~PAGE_MASK)
 #define PAGECOUNT(buf, buflen) ((buflen) \
 		? ((((unsigned long)((unsigned long)buf + buflen - 1)) \
 				>> PAGE_SHIFT) - \

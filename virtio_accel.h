@@ -38,6 +38,7 @@ struct virtio_accel_hdr {
 #define VIRTIO_ACCEL_CREATE_SESSION          1
 #define VIRTIO_ACCEL_DESTROY_SESSION         2
 #define VIRTIO_ACCEL_DO_OP                   3
+#define VIRTIO_ACCEL_GET_TIMERS              4
 	__virtio32 op_type;
 
 	/* session create structs */

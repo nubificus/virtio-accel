@@ -242,6 +242,7 @@ static int virtaccel_probe(struct virtio_device *vdev)
 	vaccel->owner = THIS_MODULE;
 	vaccel = vdev->priv = vaccel;
 	vaccel->vdev = vdev;
+	INIT_LIST_HEAD(&vaccel->sessions);
 
 	err = virtaccel_init_vqs(vaccel);
 	if (err) {
