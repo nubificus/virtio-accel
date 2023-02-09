@@ -11,6 +11,8 @@
 
 #include "accel.h"
 #include "virtio_accel-common.h"
+#include "virtio_accel-timers.h"
+
 
 static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		unsigned long _arg)
@@ -20,8 +22,10 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	struct virtio_accel *vaccel = vaccel_file->vaccel;
 	struct virtio_accel_req *req;
 	struct accel_session *sess = NULL;
+	struct virtio_accel_sess *vsess = NULL;
 	int ret;
 
+	//virtaccel_timer_start("accel > create sess obj", sess);
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
 	if (!req)
 		return -ENOMEM;
@@ -36,6 +40,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		ret = -EFAULT;
 		goto err_req;
 	}
+	//virtaccel_timer_stop("accel > create sess obj", sess);
 
 	req->usr = arg;
 	req->priv = sess;
@@ -43,18 +48,28 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case VACCEL_SESS_CREATE:
+		//virtaccel_timer_start("accel > create session", sess);
 		ret = virtaccel_req_create_session(req);
 		if (ret != -EINPROGRESS)
 			goto err_req;
 		break;
 	case VACCEL_SESS_DESTROY:
+		//virtaccel_timer_start("accel > destroy session", sess);
 		ret = virtaccel_req_destroy_session(req);
 		if (ret != -EINPROGRESS)
 			goto err_req;
 		break;
 	case VACCEL_DO_OP:
+		vsess = virtaccel_session_get_by_id(sess->id, req);
+		virtaccel_timer_start("accel > do op", vsess);
 		ret = virtaccel_req_operation(req);
 		if (ret != -EINPROGRESS)
+			goto err_req;
+		break;
+	case VACCEL_GET_TIMERS:
+		ret = virtaccel_req_timers(req);
+		req->ret = ret;
+		if (ret < 0)
 			goto err_req;
 		break;
 	default:
@@ -63,12 +78,19 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		goto err;
 	}
 
-	pr_debug("Waiting for request to complete\n");
-	wait_for_completion_killable(&req->completion);
-	virtaccel_handle_req_result(req);
-	virtaccel_clear_req(req);
-	reinit_completion(&req->completion);
+	if (cmd != VACCEL_GET_TIMERS) {
+		pr_debug("Waiting for request to complete\n");
+		wait_for_completion_killable(&req->completion);
+		virtaccel_handle_req_result(req);
+		virtaccel_clear_req(req);
+		reinit_completion(&req->completion);
+	}
+	//virtaccel_timer_stop("accel > create session", sess);
+	//virtaccel_timer_stop("accel > destroy session", sess);
+	virtaccel_timer_stop("accel > do op", vsess);
 	pr_debug("Request completed\n");
+
+	//virtaccel_timer_print_all_total(sess);
 
 	ret = req->ret;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
@@ -103,7 +125,6 @@ static int accel_dev_open(struct inode *inode, struct file *filp)
 
 	vaccel->dev_minor = iminor(inode);
 
-	INIT_LIST_HEAD(&vaccel_file->sessions);
 	vaccel_file->vaccel = vaccel;
 	filp->private_data = vaccel_file;
 
