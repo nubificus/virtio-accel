@@ -47,7 +47,7 @@ jobs:
         id: build-vmlinux
         working-directory: linux
         run: |
-          sudo ln -sf /usr/bin/gcc-8 /usr/bin/gcc
+          #sudo ln -sf /usr/bin/gcc-8 /usr/bin/gcc
           if [[ "${{ matrix.arch }}" == "aarch64" ]]
           then
             wget https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-arm64-5.10.config
@@ -66,7 +66,7 @@ jobs:
             echo '::set-output name=artifact_pathing::vmlinux'
             touch .config
             make microvm.config CONFIG_MODULES=y
-            CC=gcc-8 make -j$(nproc)
+            #CC=gcc-8 make -j$(nproc)
             sudo cp arch/x86_64/boot/bzImage vmlinuz
           fi
           sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
@@ -76,9 +76,9 @@ jobs:
         id: build-virtio
         working-directory: virtio-accel
         run: |
-          sudo ln -sf /usr/bin/gcc-8 /usr/bin/gcc
+          #sudo ln -sf /usr/bin/gcc-8 /usr/bin/gcc
           make KDIR=../linux ZC=0
-          sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
+          #sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
 
       - name: Upload linux Image
         id: upload-image
