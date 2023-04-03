@@ -59,6 +59,7 @@ jobs:
             touch .config
             make microvm.config
             make Image -j$(nproc) 
+            make Image.gz -j$(nproc) 
             make modules -j$(nproc) 
             sudo mv arch/arm64/boot/Image vmlinux
             sudo cp arch/arm64/boot/Image.gz vmlinuz
