@@ -24,10 +24,7 @@ jobs:
             echo "ARTIFACT_SHA=$(echo ${{github.sha}})" >> $GITHUB_ENV
           fi
 
-      - name: Install building deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libz-dev bin86 bison flex bc libelf-dev libssl-dev wget zip gcc-8
+          #sudo apt-get install -y build-essential libz-dev bin86 bison flex bc libelf-dev libssl-dev wget zip gcc-8
 
         # This is hardcoded for now in the version of linux that Firecracker works with
       - name: Set kernel version
