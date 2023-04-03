@@ -24,11 +24,12 @@ jobs:
             echo "ARTIFACT_SHA=$(echo ${{github.sha}})" >> $GITHUB_ENV
           fi
 
-          #sudo apt-get install -y build-essential libz-dev bin86 bison flex bc libelf-dev libssl-dev wget zip gcc-8
 
         # This is hardcoded for now in the version of linux that Firecracker works with
       - name: Set kernel version
-        run: echo "RELEASE_VERSION=v5.10" >> $GITHUB_ENV
+        run: |
+          echo "RELEASE_VERSION=v5.10" >> $GITHUB_ENV
+          sudo apt update && sudo apt install -y build-essential libz-dev bin86 bison flex bc libelf-dev libssl-dev wget zip
 
       - name: Fetch virtio-accel
         uses: actions/checkout@v2
