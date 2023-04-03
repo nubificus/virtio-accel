@@ -67,9 +67,10 @@ jobs:
             touch .config
             make microvm.config CONFIG_MODULES=y
             #CC=gcc-8 make -j$(nproc)
+            make -j$(nproc)
             sudo cp arch/x86_64/boot/bzImage vmlinuz
           fi
-          sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
+          #sudo ln -sf /usr/bin/gcc-9 /usr/bin/gcc
 
 
       - name: Build virtio-accel
