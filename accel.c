@@ -68,8 +68,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	case VACCEL_GET_TIMERS:
 		ret = virtaccel_req_timers(req);
-		req->ret = ret;
-		if (ret < 0)
+		if (ret != -EINPROGRESS)
 			goto err_req;
 		break;
 	default:
@@ -78,13 +77,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 		goto err;
 	}
 
-	if (cmd != VACCEL_GET_TIMERS) {
-		pr_debug("Waiting for request to complete\n");
-		wait_for_completion_killable(&req->completion);
-		virtaccel_handle_req_result(req);
-		virtaccel_clear_req(req);
-		reinit_completion(&req->completion);
-	}
+	pr_debug("Waiting for request to complete\n");
+	wait_for_completion_killable(&req->completion);
+	virtaccel_handle_req_result(req);
+	virtaccel_clear_req(req);
+	reinit_completion(&req->completion);
+
 	//virtaccel_timer_stop("accel > create session", sess);
 	//virtaccel_timer_stop("accel > destroy session", sess);
 	virtaccel_timer_stop("accel > do op", vsess);

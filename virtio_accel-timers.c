@@ -9,11 +9,12 @@
 static int timer_sample_add(struct virtio_accel_timer *timer)
 {
 #ifdef TIMERS
+	struct virtio_accel_timer_sample *sample = NULL;
+
 	if (!timer)
 		return 0;
 
-	struct virtio_accel_timer_sample *sample =
-		kzalloc(sizeof(*sample), GFP_KERNEL);
+	sample = kzalloc(sizeof(*sample), GFP_KERNEL);
 	if (!sample)
 		return 0;
 
@@ -27,10 +28,11 @@ static int timer_sample_add(struct virtio_accel_timer *timer)
 static int timer_sample_time(struct virtio_accel_timer *timer)
 {
 #ifdef TIMERS
+	struct virtio_accel_timer_sample *sample = NULL;
+
 	if (timer) {
 		// FIXME: list empty
-		struct virtio_accel_timer_sample *sample =
-			list_last_entry(&timer->samples, typeof(*sample), node);
+		sample = list_last_entry(&timer->samples, typeof(*sample), node);
 
 		// FIXME: time not 0
 		sample->time = ktime_sub(ktime_get(), sample->start);
@@ -81,15 +83,15 @@ static struct virtio_accel_timer *timer_create_and_add(const char *name,
 int virtaccel_timer_start(char *name, struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
+	struct virtio_accel_timer *timer = NULL;
+
 	if (!sess) {
 		pr_warn("virtio-accel session not found. Timer '%s' will not be created.",
 				name);
 		return 0;
 	}
 
-	struct virtio_accel_timer *timer = timer_get_by_name(name, sess);
-	//struct virtio_accel_timer *timer;
-
+	timer = timer_get_by_name(name, sess);
 	if (timer == NULL) {
 		timer = timer_create_and_add(name, sess);
 		if (!timer)
@@ -105,10 +107,12 @@ int virtaccel_timer_start(char *name, struct virtio_accel_sess *sess)
 void virtaccel_timer_stop(char *name, struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
+	struct virtio_accel_timer *timer = NULL;
+
 	if (!sess)
 		return;
 
-	struct virtio_accel_timer *timer = timer_get_by_name(name, sess);
+	timer = timer_get_by_name(name, sess);
 	if (!timer)
 		return;
 
@@ -137,10 +141,12 @@ void virtaccel_timer_del(struct virtio_accel_timer *timer)
 void virtaccel_timer_del_by_name(char *name, struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
+	struct virtio_accel_timer *timer = NULL;
+
 	if (!sess)
 		return;
 
-	struct virtio_accel_timer *timer = timer_get_by_name(name, sess);
+	timer = timer_get_by_name(name, sess);
 	if (!timer)
 		return;
 
@@ -153,12 +159,12 @@ void virtaccel_timer_del_by_name(char *name, struct virtio_accel_sess *sess)
 void virtaccel_timer_del_all(struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
-	if (!sess)
-		return;
-
 	struct virtio_accel_timer *timer = NULL;
 	struct hlist_node *tmp;
 	int bkt;
+
+	if (!sess)
+		return;
 
 	hash_for_each_safe(sess->timers, bkt, tmp, timer, node) {
 		virtaccel_timer_del(timer);
@@ -173,9 +179,9 @@ void virtaccel_timer_del_all(struct virtio_accel_sess *sess)
 static s64 timer_sample_get_last(struct virtio_accel_timer *timer)
 {
 #ifdef TIMERS
+	struct virtio_accel_timer_sample *sample = NULL;
 	// FIXME: list empty
-	struct virtio_accel_timer_sample *sample =
-		list_last_entry(&timer->samples, typeof(*sample), node);
+	sample = list_last_entry(&timer->samples, typeof(*sample), node);
 
 	return ktime_to_ns(sample->time);
 #else
@@ -203,11 +209,12 @@ void virtaccel_timer_print_by_name(char *name, struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
 	struct virtio_accel_timer *timer = timer_get_by_name(name, sess);
+	s64 time;
 
 	if (timer == NULL)
 		return;
 
-	s64 time = timer_sample_get_last(timer);
+	time = timer_sample_get_last(timer);
 	printk(KERN_INFO FORMAT_STRING, timer->name, time, 1);
 #endif
 }
@@ -215,11 +222,11 @@ void virtaccel_timer_print_by_name(char *name, struct virtio_accel_sess *sess)
 void virtaccel_timer_print_all(struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
-	if (!sess)
-		return;
-
 	struct virtio_accel_timer *timer = NULL;
 	int bkt;
+
+	if (!sess)
+		return;
 
 	hash_for_each(sess->timers, bkt, timer, node) {
 		s64 time = timer_sample_get_last(timer);
@@ -231,11 +238,11 @@ void virtaccel_timer_print_all(struct virtio_accel_sess *sess)
 void virtaccel_timer_print_all_total(struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
-	if (!sess)
-		return;
-
 	struct virtio_accel_timer *timer = NULL;
 	int bkt;
+
+	if (!sess)
+		return;
 
 	hash_for_each(sess->timers, bkt, timer, node) {
 		s64 time = timer_sample_get_total(timer);
@@ -248,13 +255,14 @@ int virtaccel_timer_print_by_name_to_buf(char **buf,
 		char *name, struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
+	int ssize = 0;
+	s64 time = 0;
+	struct virtio_accel_timer *timer = NULL;
+
 	if (!sess)
 		return 0;
 
-	int bkt, ssize = 0;
-	s64 time = 0;
-	struct virtio_accel_timer *timer = timer_get_by_name(name, sess);
-
+	timer = timer_get_by_name(name, sess);
 	if (timer == NULL)
 		return 0;
 
@@ -279,12 +287,12 @@ int virtaccel_timer_print_all_to_buf(char **buf,
 		struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
-	if (!sess)
-		return 0;
-
 	struct virtio_accel_timer *timer = NULL;
 	int bkt, ssize = 0, size = 0;
 	s64 time = 0;
+
+	if (!sess)
+		return 0;
 
 	hash_for_each(sess->timers, bkt, timer, node) {
 		time = timer_sample_get_last(timer);
@@ -314,12 +322,12 @@ int virtaccel_timer_print_all_total_to_buf(struct accel_arg *tbuf,
 		struct virtio_accel_sess *sess)
 {
 #ifdef TIMERS
-	if (!sess)
-		return 0;
-
 	struct virtio_accel_timer *timer = NULL;
 	int bkt, ssize = 0, size = 0;
 	s64 time = 0;
+
+	if (!sess)
+		return 0;
 
 	hash_for_each(sess->timers, bkt, timer, node) {
 		time = timer_sample_get_total(timer);
@@ -364,12 +372,13 @@ static int timer_sample_virtio_to_accel(struct accel_prof_sample *accel_samples,
 		i++;
 	}
 
-	return --i;
+	return i;
 #else
 	return 0;
 #endif
 }
 
+#define TIMERS_NAME_PREFIX "[virtio-accel]"
 int virtaccel_timer_virtio_to_accel(struct accel_prof_region *accel_timers,
 		int nr_accel_timers, struct virtio_accel_sess *sess)
 {
@@ -387,14 +396,15 @@ int virtaccel_timer_virtio_to_accel(struct accel_prof_region *accel_timers,
 			break;
 		}
 
-		strncpy(accel_timers[i].name, timer->name, TIMERS_NAME_MAX);
+		snprintf(accel_timers[i].name, TIMERS_NAME_MAX, "%s %s",
+				TIMERS_NAME_PREFIX, timer->name);
 		accel_timers[i].nr_entries =
 			timer_sample_virtio_to_accel(accel_timers[i].samples,
 				accel_timers[i].size, timer);
 		i++;
 	}
 
-	return --i;
+	return i;
 #else
 	return 0;
 #endif
