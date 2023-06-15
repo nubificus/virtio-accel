@@ -1,14 +1,18 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/moduleparam.h>
 
-#include "virtio_accel-timers.h"
+#include "virtio_accel-prof.h"
 #include "accel.h"
 
+static bool profiling = true;
+module_param(profiling, bool, S_IRUGO);
+MODULE_PARM_DESC(profiling, "virtio-accel profiling");
 
 static int timer_sample_add(struct virtio_accel_timer *timer)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer_sample *sample = NULL;
 
 	if (!timer)
@@ -27,7 +31,7 @@ static int timer_sample_add(struct virtio_accel_timer *timer)
 
 static int timer_sample_time(struct virtio_accel_timer *timer)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer_sample *sample = NULL;
 
 	if (timer) {
@@ -45,7 +49,7 @@ static int timer_sample_time(struct virtio_accel_timer *timer)
 static struct virtio_accel_timer *timer_get_by_name(const char *name,
 		struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL, *t;
 	int bkt;
 
@@ -65,7 +69,7 @@ static struct virtio_accel_timer *timer_get_by_name(const char *name,
 static struct virtio_accel_timer *timer_create_and_add(const char *name,
 		struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 		struct virtio_accel_timer *timer = kzalloc(sizeof(*timer), GFP_KERNEL);
 		if (timer) {
 			strncpy(timer->name, name, TIMERS_NAME_MAX);
@@ -82,8 +86,11 @@ static struct virtio_accel_timer *timer_create_and_add(const char *name,
 
 int virtaccel_timer_start(char *name, struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
+
+	if (!profiling)
+		return 0;
 
 	if (!sess) {
 		pr_warn("virtio-accel session not found. Timer '%s' will not be created.",
@@ -106,8 +113,11 @@ int virtaccel_timer_start(char *name, struct virtio_accel_sess *sess)
 
 void virtaccel_timer_stop(char *name, struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
+
+	if (!profiling)
+		return;
 
 	if (!sess)
 		return;
@@ -122,8 +132,11 @@ void virtaccel_timer_stop(char *name, struct virtio_accel_sess *sess)
 
 void virtaccel_timer_del(struct virtio_accel_timer *timer)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer_sample *sample = NULL, *tmp;
+
+	if (!profiling)
+		return;
 
 	if (!timer)
 		return;
@@ -138,10 +151,13 @@ void virtaccel_timer_del(struct virtio_accel_timer *timer)
 #endif
 }
 
-void virtaccel_timer_del_by_name(char *name, struct virtio_accel_sess *sess)
+void virtaccel_timers_del_by_name(char *name, struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
+
+	if (!profiling)
+		return;
 
 	if (!sess)
 		return;
@@ -156,12 +172,15 @@ void virtaccel_timer_del_by_name(char *name, struct virtio_accel_sess *sess)
 }
 
 
-void virtaccel_timer_del_all(struct virtio_accel_sess *sess)
+void virtaccel_timers_del_all(struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 	struct hlist_node *tmp;
 	int bkt;
+
+	if (!profiling)
+		return;
 
 	if (!sess)
 		return;
@@ -178,7 +197,7 @@ void virtaccel_timer_del_all(struct virtio_accel_sess *sess)
 
 static s64 timer_sample_get_last(struct virtio_accel_timer *timer)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer_sample *sample = NULL;
 	// FIXME: list empty
 	sample = list_last_entry(&timer->samples, typeof(*sample), node);
@@ -191,7 +210,7 @@ static s64 timer_sample_get_last(struct virtio_accel_timer *timer)
 
 static s64 timer_sample_get_total(struct virtio_accel_timer *timer)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer_sample *sample = NULL, *tmp;
 	s64 total = 0;
 
@@ -205,11 +224,14 @@ static s64 timer_sample_get_total(struct virtio_accel_timer *timer)
 #endif
 }
 
-void virtaccel_timer_print_by_name(char *name, struct virtio_accel_sess *sess)
+void virtaccel_timers_print_by_name(char *name, struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = timer_get_by_name(name, sess);
 	s64 time;
+
+	if (!profiling)
+		return;
 
 	if (timer == NULL)
 		return;
@@ -219,11 +241,14 @@ void virtaccel_timer_print_by_name(char *name, struct virtio_accel_sess *sess)
 #endif
 }
 
-void virtaccel_timer_print_all(struct virtio_accel_sess *sess)
+void virtaccel_timers_print_all(struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 	int bkt;
+
+	if (!profiling)
+		return;
 
 	if (!sess)
 		return;
@@ -235,11 +260,14 @@ void virtaccel_timer_print_all(struct virtio_accel_sess *sess)
 #endif
 }
 
-void virtaccel_timer_print_all_total(struct virtio_accel_sess *sess)
+void virtaccel_timers_print_all_total(struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 	int bkt;
+
+	if (!profiling)
+		return;
 
 	if (!sess)
 		return;
@@ -251,13 +279,16 @@ void virtaccel_timer_print_all_total(struct virtio_accel_sess *sess)
 #endif
 }
 
-int virtaccel_timer_print_by_name_to_buf(char **buf,
+int virtaccel_timers_print_by_name_to_buf(char **buf,
 		char *name, struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	int ssize = 0;
 	s64 time = 0;
 	struct virtio_accel_timer *timer = NULL;
+
+	if (!profiling)
+		return 0;
 
 	if (!sess)
 		return 0;
@@ -283,13 +314,16 @@ int virtaccel_timer_print_by_name_to_buf(char **buf,
 	return 0;
 }
 
-int virtaccel_timer_print_all_to_buf(char **buf,
+int virtaccel_timers_print_all_to_buf(char **buf,
 		struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 	int bkt, ssize = 0, size = 0;
 	s64 time = 0;
+
+	if (!profiling)
+		return 0;
 
 	if (!sess)
 		return 0;
@@ -318,13 +352,16 @@ int virtaccel_timer_print_all_to_buf(char **buf,
 	return 0;
 }
 
-int virtaccel_timer_print_all_total_to_buf(struct accel_arg *tbuf,
+int virtaccel_timers_print_all_total_to_buf(struct accel_arg *tbuf,
 		struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 	int bkt, ssize = 0, size = 0;
 	s64 time = 0;
+
+	if (!profiling)
+		return 0;
 
 	if (!sess)
 		return 0;
@@ -356,7 +393,7 @@ int virtaccel_timer_print_all_total_to_buf(struct accel_arg *tbuf,
 static int timer_sample_virtio_to_accel(struct accel_prof_sample *accel_samples,
 		int nr_accel_samples, struct virtio_accel_timer *timer)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer_sample *sample = NULL, *tmp;
 	int i = 0;
 
@@ -379,12 +416,15 @@ static int timer_sample_virtio_to_accel(struct accel_prof_sample *accel_samples,
 }
 
 #define TIMERS_NAME_PREFIX "[virtio-accel]"
-int virtaccel_timer_virtio_to_accel(struct accel_prof_region *accel_timers,
+int virtaccel_timers_virtio_to_accel(struct accel_prof_region *accel_timers,
 		int nr_accel_timers, struct virtio_accel_sess *sess)
 {
-#ifdef TIMERS
+#ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 	int bkt, i = 0;
+
+	if (!profiling)
+		return 0;
 
 	if (nr_accel_timers < 1)
 		return 0;

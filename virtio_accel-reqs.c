@@ -9,7 +9,7 @@
 
 #include "accel.h"
 #include "virtio_accel-common.h"
-#include "virtio_accel-timers.h"
+#include "virtio_accel-prof.h"
 
 
 static int virtaccel_get_user_buf(struct virtio_accel_arg *v, int write,
@@ -629,7 +629,7 @@ static int virtaccel_handle_timers(struct virtio_accel_req *req)
 				(struct accel_prof_sample *)virtaccel_get_prepared_buf(&h->op.in[3 + i], vdev);
 		}
 
-		ret = virtaccel_timer_virtio_to_accel(accel_timers, nr_timers, vsess);
+		ret = virtaccel_timers_virtio_to_accel(accel_timers, nr_timers, vsess);
 		if (ret < 0)
 			goto out_qnt;
 

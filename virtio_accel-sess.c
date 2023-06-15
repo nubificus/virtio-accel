@@ -1,12 +1,7 @@
-//#include <linux/uaccess.h>
-//#include <linux/string.h>
-//
-//#include "accel.h"
-
 #include <linux/slab.h>
 #include <linux/list.h>
 
-#include "virtio_accel-timers.h"
+#include "virtio_accel-prof.h"
 
 
 struct virtio_accel_sess *virtaccel_session_create_and_add(
@@ -16,7 +11,7 @@ struct virtio_accel_sess *virtaccel_session_create_and_add(
 	if (sess) {
 		sess->id = accel_sess->id;
 		sess->nr_timers = 0;
-		virtaccel_timer_init(sess);
+		virtaccel_timers_init(sess);
 		list_add_tail(&sess->node, &req->vaccel->sessions);
 	}
 
@@ -34,7 +29,7 @@ void virtaccel_session_delete(struct accel_session *accel_sess,
 	list_for_each_entry_safe(s, tmp, &req->vaccel->sessions, node) {
 		if (s->id == accel_sess->id) {
 			list_del(&s->node);
-			virtaccel_timer_del_all(s);
+			virtaccel_timers_free(s);
 			kfree(s);
 		}
 	}
