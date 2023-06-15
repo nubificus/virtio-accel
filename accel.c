@@ -11,7 +11,7 @@
 
 #include "accel.h"
 #include "virtio_accel-common.h"
-#include "virtio_accel-timers.h"
+#include "virtio_accel-prof.h"
 
 
 static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
