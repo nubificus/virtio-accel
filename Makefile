@@ -1,13 +1,12 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
-PWD := $(shell pwd)
-KVERBOSE = 'V=1'
+BUILD_DIR ?= $(CURDIR)/build
+KVERBOSE = V=1
 DEBUG ?= 0
 ZC ?= 1
 PROFILING ?= 1
 
-#EXTRA_CFLAGS +=
 ifeq ($(DEBUG),1)
-  EXTRA_CFLAGS += -g -DDEBUG
+EXTRA_CFLAGS += -g -DDEBUG
 endif
 ifeq ($(ZC),1)
 EXTRA_CFLAGS += -DZC
@@ -16,7 +15,7 @@ ifeq ($(PROFILING),1)
 EXTRA_CFLAGS += -DPROFILING
 endif
 
-KMAKE_OPTS := -C $(KDIR) M=$(CURDIR)
+KMAKE_OPTS := -C $(KDIR) src=$(CURDIR) M=$(BUILD_DIR)
 ifneq ($(ARCH),)
 KMAKE_OPTS += ARCH=$(ARCH)
 endif

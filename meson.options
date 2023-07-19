@@ -1,0 +1,19 @@
+option('kdir',
+  type : 'string',
+  value : 'default',
+  description : 'Kernel source directory')
+
+option('debug-mode', 
+  type : 'boolean',
+  value : false,
+  description : 'Enable debug mode')
+
+option('zc',
+  type : 'boolean',
+  value : true,
+  description : 'Enable guest zero-copy')
+
+option('profiling',
+  type : 'boolean',
+  value : true,
+  description : 'Enable profiling')
