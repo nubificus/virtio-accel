@@ -14,7 +14,11 @@ done
 
 [ "${OUTPUT_DIR}" = "${SRC_DIR}" ] && return
 
-${MAKE_BIN} -C "${SRC_DIR}" "$@"
+if [ -n "${MESON_INSTALL_DESTDIR_PREFIX}" ]; then
+	MAKE_ARGS="INSTALL_MOD_PATH=\"${MESON_INSTALL_DESTDIR_PREFIX}\""
+fi
+
+"${MAKE_BIN}" -C "${SRC_DIR}" "${MAKE_ARGS}" "$@"
 
 if [ -z "$INSTALL" ]; then
 	cp "${BUILD_DIR}"/"${OUTPUT}" "${OUTPUT_DIR}"/"${OUTPUT}"
