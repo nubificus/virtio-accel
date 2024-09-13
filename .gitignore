@@ -10,3 +10,4 @@ modules.order
 *.mod
 *.mod.cmd
 cscope.out
+/build*

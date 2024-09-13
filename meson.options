@@ -3,11 +3,6 @@ option('kdir',
   value : 'default',
   description : 'Kernel source directory')
 
-option('debug-mode',
-  type : 'boolean',
-  value : false,
-  description : 'Enable debug mode')
-
 option('zc',
   type : 'boolean',
   value : true,
