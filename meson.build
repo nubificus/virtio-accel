@@ -1,9 +1,20 @@
 project('virtio-accel', 'c',
   meson_version : '>=1.1',
+  default_options : ['prefix=/'],
   version : run_command('sh', '-c',
     'git submodule update --init >/dev/null && ' +
     'scripts/common/generate-version.sh .',
-    check: false).stdout().strip())
+    check: true).stdout().strip())
+
+opt_kdir = get_option('kdir')
+opt_zc = get_option('zc')
+opt_profiling = get_option('profiling')
+
+debug = '0'
+opt_buildtype = get_option('buildtype')
+if opt_buildtype == 'debug'
+  debug = '1'
+endif
 
 virtio_accel_sources = files([
   'virtio_accel-mgr.c',
@@ -18,14 +29,9 @@ virtio_accel_sources = files([
   'virtio_accel-prof.h',
   'virtio_accel-zc.c'])
 
-opt_kdir = get_option('kdir')
-opt_debug = get_option('debug-mode')
-opt_zc = get_option('zc')
-opt_profiling = get_option('profiling')
-
 env_vars = {
+  'DEBUG': debug,
   'ZC': opt_zc.to_int().to_string(),
-  'DEBUG': opt_debug.to_int().to_string(),
   'PROFILING': opt_profiling.to_int().to_string(),
 }
 if opt_kdir != 'default'
@@ -53,20 +59,48 @@ virtio_accel_dep = declare_dependency(
   include_directories : include_directories('.'),
   sources: virtio_accel)
 
-opt_prefix = get_option('prefix')
-if opt_prefix == '/usr/local'
-  install_path = ''
-else
-  install_path = opt_prefix
-endif
 meson.add_install_script(make_sh, make_bin,
-    meson.current_source_dir(), meson.current_build_dir(), 'virtio_accel.ko',
-    'modules_install', 'INSTALL_MOD_PATH='+install_path,
-    'BUILD_DIR='+meson.current_build_dir() / 'virtio_accel.ko.p')
+  meson.current_source_dir(), meson.current_build_dir(), 'virtio_accel.ko',
+  'modules_install',
+  'BUILD_DIR='+meson.current_build_dir() / 'virtio_accel.ko.p',
+  skip_if_destdir : true)
+
+meson.add_dist_script(
+  'scripts/dist.sh',
+  'virtio-accel',
+  get_option('buildtype'),
+  'DEBUG',
+  debug,
+  'ZC',
+  opt_zc.to_int().to_string(),
+  'PROFILING',
+  opt_profiling.to_int().to_string(),
+  )
+
+# helper vars for parent projects
+version = meson.project_version()
+
+gen_vm_artifacts = custom_target('gen-vm-artifacts',
+  command : ['scripts/gen-vm-artifacts.sh',
+    meson.project_source_root(),
+    meson.project_build_root(),
+    'DEBUG=' + debug + ' ZC=' +opt_zc.to_int().to_string() +
+      ' PROFILING=' + opt_profiling.to_int().to_string(), 
+    meson.project_name(),
+    meson.project_version()],
+  output : [
+    meson.project_name() + '-' + meson.project_version() + '-bin.tar.xz',
+    meson.project_name() + '-' + meson.project_version() + '-fc-bin.tar.xz',
+    meson.project_name() + '-' + meson.project_version() + '-linux-image.tar.xz',
+    meson.project_name() + '-' + meson.project_version() + '-fc-linux-image.tar.xz'],
+  console : true,
+  build_by_default : false,
+  install : false)
+
+alias_target('gen-vm-artifacts', gen_vm_artifacts)
 
 summary({
   'Kernel source directory' : opt_kdir,
-  'Enable debug': opt_debug,
   'Enable guest zero-copy': opt_zc,
   'Enable profiling': opt_profiling,
   },
