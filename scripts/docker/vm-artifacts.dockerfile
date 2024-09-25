@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.10.0
+# SPDX-License-Identifier: Apache-2.0
 
 FROM ubuntu:24.04 as linux-builder
 

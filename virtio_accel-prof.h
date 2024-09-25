@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+
 #ifndef _VIRTIO_ACCEL_PROF_H
 #define _VIRTIO_ACCEL_PROF_H
 
