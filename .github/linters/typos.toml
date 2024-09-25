@@ -1,0 +1,9 @@
+[default.extend-words]
+filp = "filp"
+PARM = "PARM"
+
+[files]
+extend-exclude = [
+  "subprojects/*",
+  "third-party/*",
+]

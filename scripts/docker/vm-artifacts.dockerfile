@@ -8,6 +8,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install prerequisites
 WORKDIR /
+# hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential gcc g++ ca-certificates wget git bison flex bc \
