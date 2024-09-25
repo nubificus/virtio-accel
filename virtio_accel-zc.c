@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+
 /* based on drivers/scsi/st.c & cryptodev-linux */
 #include <linux/atomic.h>
 #include <linux/err.h>

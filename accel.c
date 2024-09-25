@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+
 #include <linux/cdev.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
