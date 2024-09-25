@@ -1,0 +1,65 @@
+name: Build and Verify
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [synchronize, labeled]
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+#  test-build:
+#    name: Test Build
+#    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+#    uses: nubificus/vaccel/.github/workflows/test-build.yml@main
+#    with:
+#      options: ''
+#      valgrind: false
+#    secrets: inherit
+
+  verify-build:
+    name: Verify Build
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+    uses: ./.github/workflows/verify-build.yml
+    with:
+      runner-archs: '["amd64", "arm64"]'
+      package: 'virtio-accel'
+      options: ''
+      valgrind: false
+      # FIXME: Add examples
+      skip-examples: true
+      upload-subpath: 'virtio-accel'
+    secrets: inherit
+
+  validate-files-and-commits:
+    name: Validate Files and Commits
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+    uses: nubificus/vaccel/.github/workflows/validate-files-and-commits.yml@main
+    secrets: inherit
+
+  validate-code:
+    name: Validate Code
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+    uses: nubificus/vaccel/.github/workflows/validate-code.yml@main
+    with:
+      skip-cppcheck: true
+    secrets: inherit
+
+#  generate-coverage:
+#    needs: [test-build, verify-build, validate-files-and-commits, validate-code]
+#    name: Generate Coverage Report
+#    uses: ./.github/workflows/coverage-report.yml
+#    with:
+#      comment-diff: true
+
+  # Dummy job for setting required checks
+  jobs-completed:
+    needs: [verify-build, validate-files-and-commits, validate-code]
+    name: Jobs Completed
+    runs-on: [gcc-2204-amd64]
+    steps:
+      - run: exit 0

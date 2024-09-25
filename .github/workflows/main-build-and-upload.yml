@@ -1,0 +1,30 @@
+name: Build and Upload
+
+on:
+  pull_request:
+    types: [closed]
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-merged:
+    name: Check PR is merged
+    uses: nubificus/vaccel/.github/workflows/check-merged.yml@main
+    secrets: inherit
+
+  build-dist:
+    needs: [check-merged]
+    name: Build and Upload
+    if: ${{ needs.check-merged.outputs.is-merged == 'true' }}
+    uses: nubificus/vaccel/.github/workflows/verify-build.yml@main
+    with:
+      release: true
+      runner-archs: '["amd64", "arm64"]'
+      package: 'virtio-accel'
+      options: ''
+      upload-subpath: 'virtio-accel'
+    secrets: inherit
