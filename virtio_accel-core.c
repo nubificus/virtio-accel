@@ -10,6 +10,7 @@
 
 #include "accel.h"
 #include "virtio_accel-common.h"
+#include "virtio_accel-ver.h"
 
 static void virtaccel_dataq_callback(struct virtqueue *vq)
 {
@@ -353,3 +354,4 @@ module_exit(virtaccel_exit);
 MODULE_DEVICE_TABLE(virtio, id_table);
 MODULE_DESCRIPTION("virtio accel device driver");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(VIRTACCEL_VERSION);

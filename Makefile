@@ -26,8 +26,9 @@ ifneq ($(INSTALL_MOD_PATH),)
 KMAKE_OPTS += INSTALL_MOD_PATH=$(INSTALL_MOD_PATH)
 endif
 
+ccflags-y := -I$(BUILD_DIR)
 obj-m := virtio_accel.o
-virtio_accel-objs := \
+virtio_accel-y := \
 	virtio_accel-core.o \
 	virtio_accel-mgr.o \
 	virtio_accel-reqs.o \
@@ -36,16 +37,20 @@ virtio_accel-objs := \
 	virtio_accel-prof.o \
 	accel.o
 
+.PHONY: all
 all: modules
 
-modules:
+$(BUILD_DIR)/virtio_accel-ver.h: virtio_accel-ver.h.in
+	mkdir -p $(BUILD_DIR)
+	VERSION=$$(scripts/common/generate-version.sh) ;\
+	sed -e "s/@VIRTIO_ACCEL_VERSION@/$${VERSION}/g" < $< > $@
+
+modules: $(BUILD_DIR)/virtio_accel-ver.h
 	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules
 
 modules_install:
 	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules_install
 
-.PHONY: all clean test_sw test_km
-
 clean:
 	$(MAKE) $(KMAKE_OPTS) clean
-	rm -f $(USR_TESTS)
+	rm -f $(BUILD_DIR)/virtio_accel-ver.h
