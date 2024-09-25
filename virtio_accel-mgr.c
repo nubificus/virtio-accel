@@ -27,7 +27,7 @@ static DEFINE_MUTEX(table_lock);
  * Function adds virtio accel device to the global list.
  * To be used by virtio accel device specific drivers.
  *
- * Return: 0 on success, error code othewise.
+ * Return: 0 on success, error code otherwise.
  */
 int virtaccel_devmgr_add_dev(struct virtio_accel *vaccel_dev)
 {
