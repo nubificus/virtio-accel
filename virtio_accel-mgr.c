@@ -1,10 +1,10 @@
- /* Management for virtio accel devices (refer to adf_dev_mgr.c).
+/* Management for virtio accel devices (refer to adf_dev_mgr.c).
   */
 
-#include <linux/mutex.h>
+#include <linux/device.h>
 #include <linux/list.h>
 #include <linux/module.h>
-#include <linux/device.h>
+#include <linux/mutex.h>
 #include <linux/virtio.h>
 
 #include "accel.h"
@@ -17,7 +17,6 @@ static uint32_t num_devices;
 static DEFINE_MUTEX(table_lock);
 
 #define VIRTIO_ACCEL_MAX_DEVICES 32
-
 
 /*
  * virtaccel_devmgr_add_dev() - Add vaccel_dev to the acceleration
@@ -36,14 +35,15 @@ int virtaccel_devmgr_add_dev(struct virtio_accel *vaccel_dev)
 	mutex_lock(&table_lock);
 	if (num_devices == VIRTIO_ACCEL_MAX_DEVICES) {
 		pr_info("virtio_accel: only support up to %d devices\n",
-			    VIRTIO_ACCEL_MAX_DEVICES);
+			VIRTIO_ACCEL_MAX_DEVICES);
 		mutex_unlock(&table_lock);
 		return -EFAULT;
 	}
 
-	list_for_each(itr, &virtaccel_table) {
+	list_for_each(itr, &virtaccel_table)
+	{
 		struct virtio_accel *ptr =
-				list_entry(itr, struct virtio_accel, list);
+			list_entry(itr, struct virtio_accel, list);
 
 		if (ptr == vaccel_dev) {
 			mutex_unlock(&table_lock);
@@ -96,9 +96,8 @@ struct virtio_accel *virtaccel_devmgr_get_first(void)
 
 	mutex_lock(&table_lock);
 	if (!list_empty(&virtaccel_table))
-		dev = list_first_entry(&virtaccel_table,
-					struct virtio_accel,
-				    list);
+		dev = list_first_entry(&virtaccel_table, struct virtio_accel,
+				       list);
 	mutex_unlock(&table_lock);
 	return dev;
 }
@@ -177,13 +176,14 @@ int virtaccel_dev_started(struct virtio_accel *vaccel_dev)
  */
 struct virtio_accel *virtaccel_get_dev_node(int node)
 {
-	struct virtio_accel *vaccel_dev = NULL, *tmp_dev;
+	struct virtio_accel *vaccel_dev = NULL;
+	struct virtio_accel *tmp_dev;
 	unsigned long best = ~0;
 	unsigned long ctr;
 
 	mutex_lock(&table_lock);
-	list_for_each_entry(tmp_dev, virtaccel_devmgr_get_head(), list) {
-
+	list_for_each_entry(tmp_dev, virtaccel_devmgr_get_head(), list)
+	{
 		if ((node == dev_to_node(&tmp_dev->vdev->dev) ||
 		     dev_to_node(&tmp_dev->vdev->dev) < 0) &&
 		    virtaccel_dev_started(tmp_dev)) {
@@ -197,10 +197,10 @@ struct virtio_accel *virtaccel_get_dev_node(int node)
 
 	if (!vaccel_dev) {
 		pr_info("virtio_accel: Could not find a device on node %d\n",
-				node);
+			node);
 		/* Get any started device */
-		list_for_each_entry(tmp_dev,
-				virtaccel_devmgr_get_head(), list) {
+		list_for_each_entry(tmp_dev, virtaccel_devmgr_get_head(), list)
+		{
 			if (virtaccel_dev_started(tmp_dev)) {
 				vaccel_dev = tmp_dev;
 				break;
@@ -242,5 +242,4 @@ int virtaccel_dev_start(struct virtio_accel *vaccel)
  */
 void virtaccel_dev_stop(struct virtio_accel *vaccel)
 {
-	return;
 }

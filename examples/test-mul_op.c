@@ -1,21 +1,21 @@
 /*  Simple benchmark test for virtio-accel
  */
+#include <arpa/inet.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <math.h>
 
 #include "test-common.h"
 #include "accel.h"
 #include <vaccel_runtime.h>
 
-int verify_data(unsigned int k, unsigned int m, unsigned int n, float *a,
-			float *b, float *c)
+int verify_data(unsigned int k, unsigned int m, unsigned int n, const float *a,
+		const float *b, float *c)
 {
 	float *c_v;
-	size_t len_c = n * m  * sizeof(*c);
+	size_t len_c = n * m * sizeof(*c);
 	int ret = 0;
 
 	if (!(c_v = malloc(len_c))) {
@@ -26,21 +26,21 @@ int verify_data(unsigned int k, unsigned int m, unsigned int n, float *a,
 	printf("Computing expected result...\n");
 	for (int i = 0; i < m; i++) {
 		for (int j = 0; j < n; j++) {
-			float acc = 0.0f;
+			float acc = 0.0F;
 			for (int x = 0; x < k; x++) {
-				acc += a[x*m + i] * b[j*k + x];
+				acc += a[x * m + i] * b[j * k + x];
 			}
-			c_v[j*n + i] = acc;
+			c_v[j * n + i] = acc;
 		}
 	}
 
 	printf("Verifying...\n");
 	for (int i = 0; i < m; i++) {
 		for (int j = 0; j < n; j++) {
-			if (fabs(c[i*n + j] - c_v[i*n + j]) > 0.01) {
+			if (fabsf(c[i * n + j] - c_v[i * n + j]) > 0.01) {
 				ret = 1;
-				printf("Mismatch in (%d,%d): %f vs %f\n", i, j, c[i*n + j],
-						c_v[i*n + j]);
+				printf("Mismatch in (%d,%d): %f vs %f\n", i, j,
+				       c[i * n + j], c_v[i * n + j]);
 			}
 		}
 	}
@@ -48,17 +48,26 @@ int verify_data(unsigned int k, unsigned int m, unsigned int n, float *a,
 	return ret;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-	int fd, ret = 0, r = 0, iterations;
+	int fd;
+	int ret = 0;
+	int r = 0;
+	int iterations;
 	struct accel_session sess;
 	struct accel_arg op_args[4];
 	struct vaccelrt_hdr sess_hdr;
 	int chunksize = 64;
 	int verify;
-	unsigned int k, m, n;
-	float *a, *b, *c;
-	size_t len_a, len_b, len_c;
+	unsigned int k;
+	unsigned int m;
+	unsigned int n;
+	float *a;
+	float *b;
+	float *c;
+	size_t len_a;
+	size_t len_b;
+	size_t len_c;
 
 	ret = parse_args(argc, argv, &iterations, NULL, &chunksize, &verify);
 	if (ret)
@@ -69,10 +78,10 @@ int main(int argc, char** argv)
 		return ret;
 
 	k = m = n = chunksize;
-	len_a = k * m  * sizeof(*a);
-	len_b = n * k  * sizeof(*b);
-	len_c = n * m  * sizeof(*c);
-	
+	len_a = k * m * sizeof(*a);
+	len_b = n * k * sizeof(*b);
+	len_c = n * m * sizeof(*c);
+
 	// Matrices in column-major format
 	// A: K columns, M rows
 	// B: N columns, K rows
@@ -86,12 +95,12 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	if (!(c = malloc(len_c))) {
-	perror("malloc()");
+		perror("malloc()");
 		return 1;
 	}
 
 	printf("Working with %dx%d arrays (%lubytes):\n", chunksize, chunksize,
-			len_a);
+	       len_a);
 
 	for (int i = 0; i < k * m; i++) {
 		a[i] = (float)rand() / (float)RAND_MAX;
@@ -115,7 +124,8 @@ int main(int argc, char** argv)
 	op_args[3].len = len_c;
 	op_args[3].buf = (__u8 *)c;
 
-	ret = do_operation(fd, &sess, &op_args[3], &op_args[0], 1, 3, iterations);
+	ret = do_operation(fd, &sess, &op_args[3], &op_args[0], 1, 3,
+			   iterations);
 	if (ret)
 		goto out;
 

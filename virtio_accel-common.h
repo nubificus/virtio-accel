@@ -1,36 +1,38 @@
 #ifndef _VIRTIO_ACCEL_COMMON_H
 #define _VIRTIO_ACCEL_COMMON_H
 
-#include <linux/completion.h>
-#include <linux/types.h>
-#include <linux/scatterlist.h>
 #include "virtio_accel.h"
 #include "accel.h"
+#include <linux/completion.h>
+#include <linux/scatterlist.h>
+#include <linux/types.h>
 
 #ifndef fallthrough
-# if __has_attribute(__fallthrough__)
-#  define fallthrough                    __attribute__((__fallthrough__))
-# else
-#  define fallthrough                    do {} while (0)  /* fallthrough */
-# endif
+#if __has_attribute(__fallthrough__)
+#define fallthrough __attribute__((__fallthrough__))
+#else
+#define fallthrough \
+	do {        \
+	} while (0) /* fallthrough */
+#endif
 #endif
 
-#define PAGEOFFSET(buf) ((unsigned long)buf & ~PAGE_MASK)
+#define PAGEOFFSET(buf) ((unsigned long)(buf) & ~PAGE_MASK)
 #define VQ_NAME_LEN 16
 
 struct virtio_accel_sess {
 	u32 id;
 
-	#define TIMERS_BUCKET_CNT (1u << 4) // 16
+#define TIMERS_BUCKET_CNT (1u << 4) // 16
 	struct hlist_head timers[TIMERS_BUCKET_CNT];
 	unsigned int nr_timers;
 	struct list_head node;
 };
 
 struct virtio_accel_vq {
-    struct virtqueue *vq;
-    spinlock_t lock;
-    char name[VQ_NAME_LEN];
+	struct virtqueue *vq;
+	spinlock_t lock;
+	char name[VQ_NAME_LEN];
 };
 
 struct virtio_accel {
@@ -73,8 +75,8 @@ int virtaccel_dev_get(struct virtio_accel *vaccel);
 void virtaccel_dev_put(struct virtio_accel *vaccel);
 int virtaccel_dev_started(struct virtio_accel *vaccel);
 struct virtio_accel *virtaccel_get_dev_node(int node);
-int virtaccel_dev_start(struct virtio_accel *vcrypto);
-void virtaccel_dev_stop(struct virtio_accel *vcrypto);
+int virtaccel_dev_start(struct virtio_accel *vaccel);
+void virtaccel_dev_stop(struct virtio_accel *vaccel);
 
 /* virtio_accel-reqs */
 int virtaccel_req_create_session(struct virtio_accel_req *req);
@@ -87,18 +89,19 @@ int virtaccel_do_req(struct virtio_accel_req *req);
 
 /* virtio_accel-zc */
 int virtaccel_map_user_buf(struct sg_table **m_sgt, struct page ***m_pages,
-		void __user *_uaddr, size_t ulen,
-		int write, struct virtio_device *vdev);
+			   void __user *_uaddr, size_t ulen, int write,
+			   struct virtio_device *vdev);
 
 void virtaccel_unmap_user_buf(struct sg_table *m_sgt, struct page **m_pages,
-		const unsigned int nr_pages);
+			      unsigned int nr_pages);
 
 /* virtio_accel-session */
-struct virtio_accel_sess *virtaccel_session_create_and_add(
-		struct accel_session *accel_sess, struct virtio_accel_req *req);
+struct virtio_accel_sess *
+virtaccel_session_create_and_add(struct accel_session *accel_sess,
+				 struct virtio_accel_req *req);
 void virtaccel_session_delete(struct accel_session *accel_sess,
-		struct virtio_accel_req *req);
-struct virtio_accel_sess *virtaccel_session_get_by_id(u32 id,
-		struct virtio_accel_req *req);
+			      struct virtio_accel_req *req);
+struct virtio_accel_sess *
+virtaccel_session_get_by_id(u32 id, struct virtio_accel_req *req);
 
 #endif /* _VIRTIO_ACCEL_COMMON_H */

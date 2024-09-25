@@ -9,13 +9,17 @@
 #include "accel.h"
 #include <vaccel_runtime.h>
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-	int fd, ret = 0, r = 0, iterations;
+	int fd;
+	int ret = 0;
+	int r = 0;
+	int iterations;
 	struct accel_session sess;
 	struct accel_arg op_args[3];
 	struct vaccelrt_hdr sess_hdr;
-	char *filename = "example.jpg", *image = NULL;
+	char *filename = "example.jpg";
+	char *image = NULL;
 	char out_imgname[512];
 	off_t image_len;
 
@@ -30,7 +34,7 @@ int main(int argc, char** argv)
 	ret = session_create(&fd, &sess, VACCELRT_SESS_SEGMENT);
 	if (ret)
 		return ret;
-	
+
 	memset(&sess_hdr, 0, sizeof(sess_hdr));
 	memset(op_args, 0, sizeof(op_args));
 	op_args[0].len = sizeof(sess_hdr);
@@ -40,10 +44,11 @@ int main(int argc, char** argv)
 	op_args[2].len = sizeof(out_imgname);
 	op_args[2].buf = (__u8 *)out_imgname;
 
-	ret = do_operation(fd, &sess, &op_args[2], &op_args[0], 1, 2, iterations);
+	ret = do_operation(fd, &sess, &op_args[2], &op_args[0], 1, 2,
+			   iterations);
 	if (ret)
 		goto out;
-	
+
 	if (iterations == 1) {
 		printf("output image name: %s\n", out_imgname);
 	}
