@@ -6,14 +6,14 @@
 
 #define VIRTIO_ID_ACCEL 21
 
-#define VIRTIO_ACCEL_S_HW_READY  (1 << 0)
+#define VIRTIO_ACCEL_S_HW_READY (1 << 0)
 
 /* status */
-#define VIRTIO_ACCEL_OK        0
-#define VIRTIO_ACCEL_ERR       1
-#define VIRTIO_ACCEL_BADMSG    2
-#define VIRTIO_ACCEL_NOTSUPP   3
-#define VIRTIO_ACCEL_INVSESS   4 /* Invalid session id */
+#define VIRTIO_ACCEL_OK 0
+#define VIRTIO_ACCEL_ERR 1
+#define VIRTIO_ACCEL_BADMSG 2
+#define VIRTIO_ACCEL_NOTSUPP 3
+#define VIRTIO_ACCEL_INVSESS 4 /* Invalid session id */
 
 struct virtio_accel_arg {
 	__virtio32 len;
@@ -34,11 +34,11 @@ struct virtio_accel_op {
 struct virtio_accel_hdr {
 	__virtio32 sess_id;
 
-#define VIRTIO_ACCEL_NO_OP                   0
-#define VIRTIO_ACCEL_CREATE_SESSION          1
-#define VIRTIO_ACCEL_DESTROY_SESSION         2
-#define VIRTIO_ACCEL_DO_OP                   3
-#define VIRTIO_ACCEL_GET_TIMERS              4
+#define VIRTIO_ACCEL_NO_OP 0
+#define VIRTIO_ACCEL_CREATE_SESSION 1
+#define VIRTIO_ACCEL_DESTROY_SESSION 2
+#define VIRTIO_ACCEL_DO_OP 3
+#define VIRTIO_ACCEL_GET_TIMERS 4
 	__virtio32 op_type;
 
 	/* session create structs */

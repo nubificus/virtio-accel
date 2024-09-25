@@ -1,21 +1,20 @@
 #include <linux/cdev.h>
+#include <linux/miscdevice.h>
+#include <linux/module.h>
 #include <linux/poll.h>
 #include <linux/sched.h>
-#include <linux/module.h>
-#include <linux/wait.h>
-#include <linux/miscdevice.h>
-#include <linux/virtio.h>
-#include <linux/virtio_config.h>
 #include <linux/slab.h>
 #include <linux/version.h>
+#include <linux/virtio.h>
+#include <linux/virtio_config.h>
+#include <linux/wait.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"
 #include "virtio_accel-prof.h"
 
-
 static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
-		unsigned long _arg)
+			    unsigned long _arg)
 {
 	void __user *arg = (void __user *)_arg;
 	struct virtio_accel_file *vaccel_file = filp->private_data;
@@ -91,7 +90,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	//virtaccel_timer_print_all_total(sess);
 
 	ret = req->ret;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
 	kzfree(req);
 #else
 	kfree_sensitive(req);
@@ -100,7 +99,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 
 err_req:
 	kfree(sess);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
 	kzfree(req);
 #else
 	kfree_sensitive(req);
@@ -148,7 +147,7 @@ static struct miscdevice accel_dev = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "accel",
 	.fops = &accel_dev_fops,
-	.mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH,
+	.mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH,
 };
 
 int accel_dev_init(void)

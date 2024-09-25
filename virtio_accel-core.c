@@ -1,12 +1,12 @@
- /* Driver for Virtio vaccel device.
+/* Driver for Virtio vaccel device.
   */
 
+#include <linux/cpu.h>
 #include <linux/err.h>
 #include <linux/module.h>
-#include <linux/virtio_config.h>
-#include <linux/cpu.h>
-#include <linux/version.h>
 #include <linux/slab.h>
+#include <linux/version.h>
+#include <linux/virtio_config.h>
 
 #include "accel.h"
 #include "virtio_accel-common.h"
@@ -63,7 +63,8 @@ static int virtaccel_find_vqs(struct virtio_accel *vaccel)
 	vq_callback_t **callbacks;
 	struct virtqueue **vqs;
 	int ret = -ENOMEM;
-	int i, total_vqs;
+	int i;
+	int total_vqs;
 	const char **names;
 
 	total_vqs = 1;
@@ -82,16 +83,16 @@ static int virtaccel_find_vqs(struct virtio_accel *vaccel)
 	/* Allocate/initialize parameters for data virtqueues */
 	for (i = 0; i < total_vqs; i++) {
 		callbacks[i] = virtaccel_dataq_callback;
-		snprintf(vaccel->vq[i].name, sizeof(vaccel->vq[i].name),
-				"q.%d", i);
+		snprintf(vaccel->vq[i].name, sizeof(vaccel->vq[i].name), "q.%d",
+			 i);
 		names[i] = vaccel->vq[i].name;
 	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0)
-	ret = virtio_find_vqs(vaccel->vdev, total_vqs, vqs, callbacks,
-			names, NULL);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+	ret = virtio_find_vqs(vaccel->vdev, total_vqs, vqs, callbacks, names,
+			      NULL);
 #else
-	ret = vaccel->vdev->config->find_vqs(vaccel->vdev, total_vqs,
-			vqs, callbacks, names);
+	ret = vaccel->vdev->config->find_vqs(vaccel->vdev, total_vqs, vqs,
+					     callbacks, names);
 #endif
 	if (ret)
 		goto err_find;
@@ -156,16 +157,15 @@ static int virtaccel_update_status(struct virtio_accel *vaccel)
 	u32 status;
 	int err;
 
-	virtio_cread(vaccel->vdev,
-			struct virtio_accel_conf, status, &status);
+	virtio_cread(vaccel->vdev, struct virtio_accel_conf, status, &status);
 
 	/*
 	 * Unknown status bits would be a host error and the driver
 	 * should consider the device to be broken.
 	 */
 	if (status & (~VIRTIO_ACCEL_S_HW_READY)) {
-		dev_warn(&vaccel->vdev->dev,
-				"Unknown status bits: 0x%x\n", status);
+		dev_warn(&vaccel->vdev->dev, "Unknown status bits: 0x%x\n",
+			 status);
 
 		virtio_break_device(vaccel->vdev);
 		return -EPERM;
@@ -180,7 +180,7 @@ static int virtaccel_update_status(struct virtio_accel *vaccel)
 		err = virtaccel_dev_start(vaccel);
 		if (err) {
 			dev_err(&vaccel->vdev->dev,
-					"Failed to start virtio accel device.\n");
+				"Failed to start virtio accel device.\n");
 
 			return -EPERM;
 		}
@@ -215,7 +215,7 @@ static int virtaccel_probe(struct virtio_device *vdev)
 	   */
 	if (!vdev->config->get) {
 		dev_err(&vdev->dev, "%s failure: config access disabled\n",
-				__func__);
+			__func__);
 		return -EINVAL;
 	}
 
@@ -230,14 +230,15 @@ static int virtaccel_probe(struct virtio_device *vdev)
 	}
 
 	vaccel = kzalloc_node(sizeof(*vaccel), GFP_KERNEL,
-			dev_to_node(&vdev->dev));
+			      dev_to_node(&vdev->dev));
 	if (!vaccel)
 		return -ENOMEM;
 
 	/* Add virtio vaccel to global table */
 	err = virtaccel_devmgr_add_dev(vaccel);
 	if (err) {
-		dev_err(&vdev->dev, "Failed to add new virtio vaccel device.\n");
+		dev_err(&vdev->dev,
+			"Failed to add new virtio vaccel device.\n");
 		goto free;
 	}
 	vaccel->owner = THIS_MODULE;
@@ -309,13 +310,13 @@ static struct virtio_device_id id_table[] = {
 };
 
 static struct virtio_driver virtaccel_driver = {
-	.driver.name         = KBUILD_MODNAME,
-	.driver.owner        = THIS_MODULE,
-	.feature_table       = features,
-	.feature_table_size  = ARRAY_SIZE(features),
-	.id_table            = id_table,
-	.probe               = virtaccel_probe,
-	.remove              = virtaccel_remove,
+	.driver.name = KBUILD_MODNAME,
+	.driver.owner = THIS_MODULE,
+	.feature_table = features,
+	.feature_table_size = ARRAY_SIZE(features),
+	.id_table = id_table,
+	.probe = virtaccel_probe,
+	.remove = virtaccel_remove,
 	.config_changed = virtaccel_config_changed,
 };
 
