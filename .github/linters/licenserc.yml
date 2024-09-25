@@ -1,0 +1,114 @@
+header:
+  - license:
+      spdx-id: GPL-2.0-short
+      content: |
+        SPDX-License-Identifier: GPL-2.0
+    paths:
+      - '**'
+    paths-ignore:
+      - '**/.*'
+      - '**/*.md'
+      - '**/*.txt'
+      - '**/*.build'
+      - '**/*.options'
+      - '**/*.cmake'
+      - '**/*.cmake.in'
+      - '**/*.pc.in'
+      - '**/*.toml'
+      - '.github'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'subprojects'
+      - 'build*'
+      - 'Makefile'
+      - 'scripts'
+    language:
+      C:
+        extensions:
+          - ".c"
+          - ".cats"
+          - ".h"
+          - ".idc"
+          - ".c.in"
+          - ".h.in"
+        comment_style_id: DoubleSlash
+      C++:
+        extensions:
+          - ".cpp"
+          - ".c++"
+          - ".cc"
+          - ".cp"
+          - ".cxx"
+          - ".h"
+          - ".h++"
+          - ".hh"
+          - ".hpp"
+          - ".hxx"
+          - ".inc"
+          - ".inl"
+          - ".ino"
+          - ".ipp"
+          - ".re"
+          - ".tcc"
+          - ".tpp"
+          - ".cpp.in"
+          - ".hpp.in"
+        comment_style_id: DoubleSlash
+    comment: on-failure
+
+  - license:
+      spdx-id: Apache-2.0-short
+      content: |
+        SPDX-License-Identifier: Apache-2.0
+    paths:
+      - 'scripts'
+    paths-ignore:
+      - '**/.*'
+      - '**/*.md'
+      - '**/*.txt'
+      - '**/*.build'
+      - '**/*.options'
+      - '**/*.cmake'
+      - '**/*.cmake.in'
+      - '**/*.pc.in'
+      - '**/*.toml'
+      - '.github'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'subprojects'
+      - 'build*'
+      - 'Makefile'
+      - '**/*.config'
+    language:
+      C:
+        extensions:
+          - ".c"
+          - ".cats"
+          - ".h"
+          - ".idc"
+          - ".c.in"
+          - ".h.in"
+        comment_style_id: DoubleSlash
+      C++:
+        extensions:
+          - ".cpp"
+          - ".c++"
+          - ".cc"
+          - ".cp"
+          - ".cxx"
+          - ".h"
+          - ".h++"
+          - ".hh"
+          - ".hpp"
+          - ".hxx"
+          - ".inc"
+          - ".inl"
+          - ".ino"
+          - ".ipp"
+          - ".re"
+          - ".tcc"
+          - ".tpp"
+          - ".cpp.in"
+          - ".hpp.in"
+        comment_style_id: DoubleSlash
+    comment: on-failure

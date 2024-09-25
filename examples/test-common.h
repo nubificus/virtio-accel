@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+
 /*  Simple benchmark test for virtio-accel
  */
 #ifndef _TEST_COMMON_H

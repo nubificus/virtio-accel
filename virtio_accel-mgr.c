@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+
 /* Management for virtio accel devices (refer to adf_dev_mgr.c).
   */
 
