@@ -9,11 +9,10 @@
 #define TIMERS_NAME_MAX 64
 
 /* IOCTLs */
-#define VACCEL_SESS_CREATE      _IOWR('@', 0, struct accel_session)
-#define VACCEL_SESS_DESTROY     _IOWR('@', 1, struct accel_session)
-#define VACCEL_DO_OP            _IOWR('@', 2, struct accel_session)
-#define VACCEL_GET_TIMERS       _IOWR('@', 3, struct accel_session)
-
+#define VACCEL_SESS_CREATE _IOWR('@', 0, struct accel_session)
+#define VACCEL_SESS_DESTROY _IOWR('@', 1, struct accel_session)
+#define VACCEL_DO_OP _IOWR('@', 2, struct accel_session)
+#define VACCEL_GET_TIMERS _IOWR('@', 3, struct accel_session)
 
 struct accel_arg {
 	__u32 len;

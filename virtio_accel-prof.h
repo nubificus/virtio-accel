@@ -1,14 +1,13 @@
 #ifndef _VIRTIO_ACCEL_PROF_H
 #define _VIRTIO_ACCEL_PROF_H
 
-#include <linux/timekeeping.h>
-#include <linux/hashtable.h>
-#include <linux/list.h>
 #include "virtio_accel-common.h"
 #include "accel.h"
+#include <linux/hashtable.h>
+#include <linux/list.h>
+#include <linux/timekeeping.h>
 
 #define TIMERS_SAMPLE_BUCKET_CNT (1u << 4) // 16
-
 
 struct virtio_accel_timer_sample {
 	ktime_t start;
@@ -47,16 +46,17 @@ void virtaccel_timers_print_all(struct virtio_accel_sess *sess);
 
 void virtaccel_timers_print_all_total(struct virtio_accel_sess *sess);
 
-int virtaccel_timers_print_by_name_to_buf(char **buf,
-		char *name, struct virtio_accel_sess *sess);
+int virtaccel_timers_print_by_name_to_buf(char **buf, char *name,
+					  struct virtio_accel_sess *sess);
 
 int virtaccel_timers_print_all_to_buf(char **buf,
-		struct virtio_accel_sess *sess);
+				      struct virtio_accel_sess *sess);
 
 int virtaccel_timers_print_all_total_to_buf(struct accel_arg *tbuf,
-		struct virtio_accel_sess *sess);
+					    struct virtio_accel_sess *sess);
 
 int virtaccel_timers_virtio_to_accel(struct accel_prof_region *accel_timers,
-		int nr_accel_timers, struct virtio_accel_sess *sess);
+				     int nr_accel_timers,
+				     struct virtio_accel_sess *sess);
 
 #endif /* _VIRTIO_ACCEL_PROF_H */

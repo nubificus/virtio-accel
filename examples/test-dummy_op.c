@@ -9,9 +9,12 @@
 #include "accel.h"
 #include <vaccel_runtime.h>
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-	int fd, ret = 0, r = 0, iterations;
+	int fd;
+	int ret = 0;
+	int r = 0;
+	int iterations;
 	struct accel_session sess;
 	struct accel_arg op_args[4];
 	struct vaccelrt_hdr sess_hdr;
@@ -41,7 +44,8 @@ int main(int argc, char** argv)
 	op_args[1].len = chunksize;
 	op_args[1].buf = (__u8 *)buffer;
 
-	ret = do_operation(fd, &sess, &op_args[1], &op_args[0], 1, 1, iterations);
+	ret = do_operation(fd, &sess, &op_args[1], &op_args[0], 1, 1,
+			   iterations);
 
 	free(buffer);
 out:
