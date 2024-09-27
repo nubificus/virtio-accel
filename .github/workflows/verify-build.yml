@@ -27,7 +27,7 @@ on:
       dist-options:
         type: string
         default: ''
-      dist-subprojects:
+      subprojects:
         type: boolean
         default: true
       skip-examples:
@@ -73,13 +73,17 @@ jobs:
           repository: ${{ inputs.actions-repo }}
           ref: ${{ inputs.actions-rev }}
 
+      - name: Get revision info
+        id: get-rev-info
+        uses: ./.github/actions/get-revision-info
+
       - name: Initialize workspace
-        id: initialize-workspace
         uses: ./.github/actions/initialize-workspace
         with:
           fetch-depth: 0
           remote-actions-repo: ${{ inputs.actions-repo }}
           token: ${{ secrets.GIT_CLONE_PAT || github.token }}
+          ref: ${{ steps.get-rev-info.outputs.sha }}
 
       - name: Set up Docker Buildx
         id: setup-buildx
@@ -99,7 +103,7 @@ jobs:
           build-type: ${{ matrix.build-type }}
           options: ${{ inputs.dist-options || inputs.options }}
           dist: 'true'
-          dist-subprojects: ${{ inputs.dist-subprojects }}
+          subprojects: ${{ inputs.subprojects }}
 
       - name: Restore Docker Buildx
         run: |
