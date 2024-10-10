@@ -15,7 +15,7 @@ jobs:
 #  test-build:
 #    name: Test Build
 #    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
-#    uses: nubificus/vaccel/.github/workflows/test-build.yml@main
+#    uses: nubificus/vaccel/.github/workflows/test-build.yml@ci_enhance_for_plugins
 #    with:
 #      options: ''
 #      valgrind: false
@@ -38,13 +38,13 @@ jobs:
   validate-files-and-commits:
     name: Validate Files and Commits
     if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
-    uses: nubificus/vaccel/.github/workflows/validate-files-and-commits.yml@main
+    uses: nubificus/vaccel/.github/workflows/validate-files-and-commits.yml@ci_enhance_for_plugins
     secrets: inherit
 
   validate-code:
     name: Validate Code
     if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
-    uses: nubificus/vaccel/.github/workflows/validate-code.yml@main
+    uses: nubificus/vaccel/.github/workflows/validate-code.yml@ci_enhance_for_plugins
     with:
       skip-cppcheck: true
     secrets: inherit

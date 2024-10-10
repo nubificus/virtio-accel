@@ -8,7 +8,7 @@ on:
         default: 'nubificus/vaccel'
       actions-rev:
         type: string
-        default: 'main'
+        default: 'ci_enhance_for_plugins'
       runner:
         type: string
         default: '["gcc", "dind", "2204"]'
