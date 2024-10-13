@@ -36,8 +36,8 @@ int virtaccel_devmgr_add_dev(struct virtio_accel *vaccel_dev)
 
 	mutex_lock(&table_lock);
 	if (num_devices == VIRTIO_ACCEL_MAX_DEVICES) {
-		pr_info("virtio_accel: only support up to %d devices\n",
-			VIRTIO_ACCEL_MAX_DEVICES);
+		virtaccel_info("Only up to %d devices are supported\n",
+			       VIRTIO_ACCEL_MAX_DEVICES);
 		mutex_unlock(&table_lock);
 		return -EFAULT;
 	}
@@ -198,8 +198,7 @@ struct virtio_accel *virtaccel_get_dev_node(int node)
 	}
 
 	if (!vaccel_dev) {
-		pr_info("virtio_accel: Could not find a device on node %d\n",
-			node);
+		virtaccel_info("Could not find a device on node %d\n", node);
 		/* Get any started device */
 		list_for_each_entry(tmp_dev, virtaccel_devmgr_get_head(), list)
 		{

@@ -31,7 +31,8 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-			pr_debug("dataq callback: status=%u\n", req->status);
+			virtaccel_debug("dataq callback: status=%u\n",
+					req->status);
 			switch (req->status) {
 			case VIRTIO_ACCEL_OK:
 				req->ret = 0;
@@ -328,13 +329,13 @@ static int __init virtaccel_init(void)
 
 	ret = accel_dev_init();
 	if (ret < 0) {
-		pr_err("Failed to initialize character devices.\n");
+		virtaccel_err("Failed to initialize character devices.\n");
 		return ret;
 	}
 
 	ret = register_virtio_driver(&virtaccel_driver);
 	if (ret < 0) {
-		pr_err("Failed to register virtio driver.\n");
+		virtaccel_err("Failed to register virtio driver.\n");
 		goto out_dev;
 	}
 

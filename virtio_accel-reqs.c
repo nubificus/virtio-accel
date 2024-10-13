@@ -21,6 +21,9 @@ static int virtaccel_get_user_buf(struct virtio_accel_arg *v, int write,
 	struct page **m_pages;
 	struct sg_table *m_sgt;
 
+	if (!v || !v->usr_buf || !v->len)
+		return -EINVAL;
+
 	ret = virtaccel_map_user_buf(&m_sgt, &m_pages, v->usr_buf, v->len,
 				     write, vdev);
 	if (ret > 0) {
@@ -29,6 +32,8 @@ static int virtaccel_get_user_buf(struct virtio_accel_arg *v, int write,
 		v->usr_npages = cpu_to_virtio32(vdev, ret);
 	}
 #else
+	if (!v || !v->len)
+		return -EINVAL;
 
 	v->buf = kzalloc_node(v->len, GFP_ATOMIC, dev_to_node(&vdev->dev));
 	if (!v->buf)
@@ -56,12 +61,11 @@ static void virtaccel_free_buf(struct virtio_accel_arg *v)
 }
 
 static int virtaccel_prepare_args(struct virtio_accel_arg **vargs,
-				  struct accel_arg *user_arg, u32 nr_args,
+				  struct accel_arg *user_args, u32 nr_args,
 				  struct virtio_device *vdev)
 {
 	struct accel_arg *args;
 	struct virtio_accel_arg *v;
-	int i;
 	int ret;
 
 	if (!nr_args) {
@@ -81,12 +85,18 @@ static int virtaccel_prepare_args(struct virtio_accel_arg **vargs,
 		goto free_vargs;
 	}
 
-	if (unlikely(copy_from_user(args, user_arg, nr_args * sizeof(*args)))) {
+	if (!user_args) {
+		ret = -EINVAL;
+		goto free_args;
+	}
+
+	if (unlikely(
+		    copy_from_user(args, user_args, nr_args * sizeof(*args)))) {
 		ret = -EFAULT;
 		goto free_args;
 	}
 
-	for (i = 0; i < nr_args; ++i) {
+	for (int i = 0; i < nr_args; ++i) {
 		v[i].len = cpu_to_virtio32(vdev, args[i].len);
 		v[i].usr_buf = args[i].buf;
 		ret = virtaccel_get_user_buf(&v[i], 1, vdev);
@@ -100,7 +110,7 @@ static int virtaccel_prepare_args(struct virtio_accel_arg **vargs,
 	return nr_args + 1;
 
 free_vargs_buf:
-	for (i = 0; i < nr_args; ++i)
+	for (int i = 0; i < nr_args; ++i)
 		virtaccel_free_buf(&v[i]);
 free_args:
 	kfree(args);
@@ -120,6 +130,9 @@ static int virtaccel_copy_args(struct virtio_accel_arg *vargs, u32 nr_args)
 	int i;
 
 	for (i = 0; i < nr_args; ++i) {
+		if (!vargs[i].len || !vargs[i].buf)
+			return -EINVAL;
+
 		if (unlikely(copy_from_user(vargs[i].buf, vargs[i].usr_buf,
 					    vargs[i].len)))
 			return -EFAULT;
@@ -156,24 +169,17 @@ static int virtaccel_prepare_request(struct virtio_device *vdev, u32 op_type,
 
 	virtio->sess_id = cpu_to_virtio32(vdev, usr_sess->id);
 	virtio->op_type = cpu_to_virtio32(vdev, op_type);
-	virtio->op.in_nr = cpu_to_virtio32(vdev, op->in_nr);
 	virtio->op.out_nr = cpu_to_virtio32(vdev, op->out_nr);
+	virtio->op.in_nr = cpu_to_virtio32(vdev, op->in_nr);
 
-	ret = virtaccel_prepare_args(&virtio->op.in, usr_sess->op.in,
-				     virtio->op.in_nr, vdev);
-	if (ret < 0)
-		return ret;
-
-	total_sgs += ret;
-
-	ret = virtaccel_copy_args(virtio->op.in, virtio->op.in_nr);
-	if (ret < 0)
-		goto free_in;
+	virtaccel_debug("Request id: %d, type: %d, out_nr: %d, in_nr: %d\n",
+			virtio->sess_id, virtio->op_type, virtio->op.out_nr,
+			virtio->op.in_nr);
 
 	ret = virtaccel_prepare_args(&virtio->op.out, usr_sess->op.out,
 				     virtio->op.out_nr, vdev);
 	if (ret < 0)
-		goto free_in;
+		return ret;
 
 	total_sgs += ret;
 
@@ -181,12 +187,23 @@ static int virtaccel_prepare_request(struct virtio_device *vdev, u32 op_type,
 	if (ret < 0)
 		goto free_out;
 
+	ret = virtaccel_prepare_args(&virtio->op.in, usr_sess->op.in,
+				     virtio->op.in_nr, vdev);
+	if (ret < 0)
+		goto free_out;
+
+	total_sgs += ret;
+
+	ret = virtaccel_copy_args(virtio->op.in, virtio->op.in_nr);
+	if (ret < 0)
+		goto free_in;
+
 	return total_sgs;
 
-free_out:
-	virtaccel_cleanup_args(virtio->op.out, virtio->op.out_nr);
 free_in:
 	virtaccel_cleanup_args(virtio->op.in, virtio->op.in_nr);
+free_out:
+	virtaccel_cleanup_args(virtio->op.out, virtio->op.out_nr);
 
 	return ret;
 }
@@ -198,11 +215,16 @@ static void sg_cleanup(struct scatterlist *sg)
 #endif
 }
 
-static void sg_add_vaccel_one(struct scatterlist **sgs, struct scatterlist *sg,
-			      void *ptr, u32 size)
+static int sg_add_vaccel_one(struct scatterlist **sgs, struct scatterlist *sg,
+			     void *ptr, u32 size)
 {
+	if (!ptr || !size)
+		return -EINVAL;
+
 	sg_init_one(sg, ptr, size);
 	*sgs = sg;
+
+	return 1;
 }
 
 #ifndef ZC
@@ -211,7 +233,7 @@ static int sg_add_vaccel_args(struct scatterlist **sgs,
 			      struct virtio_device *vdev)
 {
 	struct scatterlist *sg;
-	int i;
+	int i, ret;
 
 	if (!nr_args)
 		return 0;
@@ -221,32 +243,50 @@ static int sg_add_vaccel_args(struct scatterlist **sgs,
 	if (!sg)
 		return -ENOMEM;
 
-	for (i = 0; i < nr_args; i++)
-		sg_add_vaccel_one(&sgs[i], &sg[i], vargs[i].buf, vargs[i].len);
+	for (i = 0; i < nr_args; i++) {
+		ret = sg_add_vaccel_one(&sgs[i], &sg[i], vargs[i].buf,
+					vargs[i].len);
+		if (ret < 0) {
+			virtaccel_err("Failed to add argument %d (size: %u)\n",
+				      i, vargs[i].len);
+			return ret;
+		}
+	}
 
 	return i;
 }
 #else
 
-static void sg_add_vaccel_one_zc(struct scatterlist **sgs, void *ptr, u32 size)
+static int sg_add_vaccel_one_zc(struct scatterlist **sgs, void *ptr, u32 size)
 {
 	struct sg_table *sgt;
 
+	if (!ptr || !size)
+		return -EINVAL;
+
 	sgt = (struct sg_table *)ptr;
 	*sgs = sgt->sgl;
+
+	return 1;
 }
 
 static int sg_add_vaccel_args(struct scatterlist **sgs,
 			      struct virtio_accel_arg *vargs, u32 nr_args,
 			      struct virtio_device *vdev)
 {
-	int i;
+	int i, ret;
 
 	if (!nr_args)
 		return 0;
 
-	for (i = 0; i < nr_args; i++)
-		sg_add_vaccel_one_zc(&sgs[i], vargs[i].buf, vargs[i].len);
+	for (i = 0; i < nr_args; i++) {
+		ret = sg_add_vaccel_one_zc(&sgs[i], vargs[i].buf, vargs[i].len);
+		if (ret < 0) {
+			virtaccel_err("Failed to add argument %d (size: %u)\n",
+				      i, vargs[i].len);
+			return ret;
+		}
+	}
 
 	return i;
 }
@@ -272,8 +312,10 @@ int virtaccel_req_create_session(struct virtio_accel_req *req)
 	//virtaccel_timer_start("accel > create session > prepare request", vaccel);
 	ret = virtaccel_prepare_request(vdev, VIRTIO_ACCEL_CREATE_SESSION, h,
 					sess);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to parse user arguments: %d\n", ret);
 		return ret;
+	}
 	//virtaccel_timer_stop("accel > create session > prepare request", vaccel);
 
 	total_sgs += ret;
@@ -285,43 +327,56 @@ int virtaccel_req_create_session(struct virtio_accel_req *req)
 		goto free_request;
 	}
 
-	//virtaccel_timer_start("accel > create session > create sg lists", vaccel);
-	ret = virtaccel_prepare_request(vdev, VIRTIO_ACCEL_CREATE_SESSION, h,
-					sess);
 	/* virtio header */
-	sg_add_vaccel_one(&sgs[out_nsgs++], &hdr_sg, h, sizeof(*h));
+	ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdr_sg, h, sizeof(*h));
+	if (ret < 0)
+		goto free_sgs;
 
 	/* virtio out arguments header */
-	if (h->op.out_nr)
-		sg_add_vaccel_one(&sgs[out_nsgs++], &hdrout_sg, h->op.out,
-				  h->op.out_nr * sizeof(*h->op.out));
+	if (h->op.out_nr) {
+		ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdrout_sg, h->op.out,
+					h->op.out_nr * sizeof(*h->op.out));
+		if (ret < 0)
+			goto free_sgs;
+	}
 
 	/* virtio in arguments header */
-	if (h->op.in_nr)
-		sg_add_vaccel_one(&sgs[out_nsgs++], &hdrin_sg, h->op.in,
-				  h->op.in_nr * sizeof(*h->op.in));
+	if (h->op.in_nr) {
+		ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdrin_sg, h->op.in,
+					h->op.in_nr * sizeof(*h->op.in));
+		if (ret < 0)
+			goto free_sgs;
+	}
 
 	/* user out arguments */
 	ret = sg_add_vaccel_args(&sgs[out_nsgs], h->op.out, h->op.out_nr, vdev);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to add user read arguments: %d\n", ret);
 		goto free_sgs;
+	}
 
 	out_nsgs += ret;
 
 	/* user in arguments */
 	ret = sg_add_vaccel_args(&sgs[out_nsgs], h->op.in, h->op.in_nr, vdev);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to add user write arguments: %d\n", ret);
 		goto free_out_sg;
+	}
 
 	in_nsgs += ret;
 
 	/* session id */
-	sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &sid_sg, &sess->id,
-			  sizeof(sess->id));
+	ret = sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &sid_sg, &sess->id,
+				sizeof(sess->id));
+	if (ret < 0)
+		goto free_in_sg;
 
 	/* result status */
-	sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &status_sg, &req->status,
-			  sizeof(req->status));
+	ret = sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &status_sg,
+				&req->status, sizeof(req->status));
+	if (ret < 0)
+		goto free_in_sg;
 
 	req->sgs = sgs;
 	req->out_sgs = out_nsgs;
@@ -400,8 +455,10 @@ int virtaccel_req_operation(struct virtio_accel_req *req)
 
 	virtaccel_timer_start("accel > operation > prepare request", vsess);
 	ret = virtaccel_prepare_request(vdev, VIRTIO_ACCEL_DO_OP, h, sess);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to parse user arguments: %d\n", ret);
 		return ret;
+	}
 	virtaccel_timer_stop("accel > operation > prepare request", vsess);
 
 	virtaccel_timer_start("accel > operation > create sg lists", vsess);
@@ -415,35 +472,50 @@ int virtaccel_req_operation(struct virtio_accel_req *req)
 	}
 
 	/* virtio header */
-	sg_add_vaccel_one(&sgs[out_nsgs++], &hdr_sg, h, sizeof(*h));
+	ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdr_sg, h, sizeof(*h));
+	if (ret < 0)
+		goto free_sgs;
 
+	/* virtio header */
 	/* virtio out arguments header */
-	if (h->op.out_nr)
-		sg_add_vaccel_one(&sgs[out_nsgs++], &hdrout_sg, h->op.out,
-				  h->op.out_nr * sizeof(*h->op.out));
+	if (h->op.out_nr) {
+		ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdrout_sg, h->op.out,
+					h->op.out_nr * sizeof(*h->op.out));
+		if (ret < 0)
+			goto free_sgs;
+	}
 
 	/* virtio in arguments header */
-	if (h->op.in_nr)
-		sg_add_vaccel_one(&sgs[out_nsgs++], &hdrin_sg, h->op.in,
-				  h->op.in_nr * sizeof(*h->op.in));
+	if (h->op.in_nr) {
+		ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdrin_sg, h->op.in,
+					h->op.in_nr * sizeof(*h->op.in));
+		if (ret < 0)
+			goto free_sgs;
+	}
 
 	/* user out arguments */
 	ret = sg_add_vaccel_args(&sgs[out_nsgs], h->op.out, h->op.out_nr, vdev);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to add user read arguments: %d\n", ret);
 		goto free_sgs;
+	}
 
 	out_nsgs += ret;
 
 	/* user in arguments */
 	ret = sg_add_vaccel_args(&sgs[out_nsgs], h->op.in, h->op.in_nr, vdev);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to add user write arguments: %d\n", ret);
 		goto free_out_sg;
+	}
 
 	in_nsgs += ret;
 
 	/* result status */
-	sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &status_sg, &req->status,
-			  sizeof(req->status));
+	ret = sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &status_sg,
+				&req->status, sizeof(req->status));
+	if (ret < 0)
+		goto free_in_sg;
 
 	req->sgs = sgs;
 	req->out_sgs = out_nsgs;
@@ -548,35 +620,49 @@ int virtaccel_req_timers(struct virtio_accel_req *req)
 	}
 
 	/* virtio header */
-	sg_add_vaccel_one(&sgs[out_nsgs++], &hdr_sg, h, sizeof(*h));
+	ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdr_sg, h, sizeof(*h));
+	if (ret < 0)
+		goto free_sgs;
 
 	/* virtio out arguments header */
-	if (h->op.out_nr)
-		sg_add_vaccel_one(&sgs[out_nsgs++], &hdrout_sg, h->op.out,
-				  h->op.out_nr * sizeof(*h->op.out));
+	if (h->op.out_nr) {
+		ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdrout_sg, h->op.out,
+					h->op.out_nr * sizeof(*h->op.out));
+		if (ret < 0)
+			goto free_sgs;
+	}
 
 	/* virtio in arguments header */
-	if (h->op.in_nr)
-		sg_add_vaccel_one(&sgs[out_nsgs++], &hdrin_sg, h->op.in,
-				  h->op.in_nr * sizeof(*h->op.in));
+	if (h->op.in_nr) {
+		ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdrin_sg, h->op.in,
+					h->op.in_nr * sizeof(*h->op.in));
+		if (ret < 0)
+			goto free_sgs;
+	}
 
 	/* user out arguments */
 	ret = sg_add_vaccel_args(&sgs[out_nsgs], h->op.out, h->op.out_nr, vdev);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to add user read arguments: %d\n", ret);
 		goto free_sgs;
+	}
 
 	out_nsgs += ret;
 
 	/* user in arguments */
 	ret = sg_add_vaccel_args(&sgs[out_nsgs], h->op.in, h->op.in_nr, vdev);
-	if (ret < 0)
+	if (ret < 0) {
+		virtaccel_err("Failed to add user write arguments: %d\n", ret);
 		goto free_out_sg;
+	}
 
 	in_nsgs += ret;
 
 	/* result status */
-	sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &status_sg, &req->status,
-			  sizeof(req->status));
+	ret = sg_add_vaccel_one(&sgs[out_nsgs + in_nsgs++], &status_sg,
+				&req->status, sizeof(req->status));
+	if (ret < 0)
+		goto free_in_sg;
 
 	req->sgs = sgs;
 	req->out_sgs = out_nsgs;
