@@ -44,8 +44,13 @@ int virtaccel_map_user_buf(struct sg_table **m_sgt, struct page ***m_pages,
 
 	nr_pages = get_user_pages_fast(uaddr, max_pages, write ? FOLL_WRITE : 0,
 				       pages);
-	if (nr_pages < max_pages)
+	if (nr_pages < max_pages) {
+		if (nr_pages < 0)
+			ret = nr_pages;
+		else
+			ret = -EFAULT;
 		goto out_unmap;
+	}
 
 	*m_sgt = kzalloc(sizeof(**m_sgt), GFP_ATOMIC);
 	if (!*m_sgt) {
@@ -82,8 +87,6 @@ out_unmap:
 	if (nr_pages > 0) {
 		for (i = 0; i < nr_pages; i++)
 			put_page(pages[i]);
-		if (ret == 0)
-			ret = -EFAULT;
 	}
 	kfree(pages);
 	return ret;

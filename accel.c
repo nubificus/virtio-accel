@@ -73,12 +73,12 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 			goto err_req;
 		break;
 	default:
-		pr_err("Invalid IOCTL\n");
+		virtaccel_err("Invalid IOCTL\n");
 		ret = -EFAULT;
 		goto err;
 	}
 
-	pr_debug("Waiting for request to complete\n");
+	virtaccel_debug("Waiting for request to complete\n");
 	wait_for_completion_killable(&req->completion);
 	virtaccel_handle_req_result(req);
 	virtaccel_clear_req(req);
@@ -87,7 +87,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	//virtaccel_timer_stop("accel > create session", sess);
 	//virtaccel_timer_stop("accel > destroy session", sess);
 	virtaccel_timer_stop("accel > do op", vsess);
-	pr_debug("Request completed\n");
+	virtaccel_debug("Request completed\n");
 
 	//virtaccel_timer_print_all_total(sess);
 
@@ -156,10 +156,10 @@ int accel_dev_init(void)
 {
 	int ret;
 
-	pr_debug("Initializing character device...\n");
+	virtaccel_debug("Initializing character device...\n");
 	ret = misc_register(&accel_dev);
 	if (unlikely(ret)) {
-		pr_err("registration of /dev/accel failed\n");
+		virtaccel_err("registration of /dev/accel failed\n");
 		return ret;
 	}
 

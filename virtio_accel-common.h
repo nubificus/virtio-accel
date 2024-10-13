@@ -67,6 +67,11 @@ struct virtio_accel_file {
 	struct virtio_accel *vaccel;
 };
 
+#define virtaccel_err(fmt, ...) pr_err("virtio-accel: " fmt, ##__VA_ARGS__)
+#define virtaccel_warn(fmt, ...) pr_warn("virtio-accel: " fmt, ##__VA_ARGS__)
+#define virtaccel_info(fmt, ...) pr_info("virtio-accel: " fmt, ##__VA_ARGS__)
+#define virtaccel_debug(fmt, ...) pr_debug("virtio-accel: " fmt, ##__VA_ARGS__)
+
 /* virtio_accel-mgr */
 int virtaccel_devmgr_add_dev(struct virtio_accel *vaccel);
 struct list_head *virtaccel_devmgr_get_head(void);

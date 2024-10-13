@@ -98,7 +98,8 @@ int virtaccel_timer_start(char *name, struct virtio_accel_sess *sess)
 		return 0;
 
 	if (!sess) {
-		pr_warn("virtio-accel session not found. Timer '%s' will not be created.",
+		virtaccel_warn(
+			"Session not found. Timer '%s' will not be created.",
 			name);
 		return 0;
 	}
@@ -416,7 +417,8 @@ static int timer_sample_virtio_to_accel(struct accel_prof_sample *accel_samples,
 	list_for_each_entry_safe(sample, tmp, &timer->samples, node)
 	{
 		if (i == nr_accel_samples) {
-			pr_warn("not all virtio-accel samples for %s can be returned (allocated: %d vs total: %d)",
+			virtaccel_warn(
+				"Not all virtio-accel samples for %s can be returned (allocated: %d vs total: %d)",
 				timer->name, nr_accel_samples,
 				timer->nr_samples);
 			break;
@@ -451,7 +453,8 @@ int virtaccel_timers_virtio_to_accel(struct accel_prof_region *accel_timers,
 	hash_for_each(sess->timers, bkt, timer, node)
 	{
 		if (i == nr_accel_timers) {
-			pr_warn("not all virtio-accel timers can be returned (allocated: %d vs total: %d)",
+			virtaccel_warn(
+				"Not all virtio-accel timers can be returned (allocated: %d vs total: %d)",
 				nr_accel_timers, sess->nr_timers);
 			break;
 		}
