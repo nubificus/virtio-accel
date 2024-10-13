@@ -62,7 +62,7 @@ static void virtaccel_free_buf(struct virtio_accel_arg *v)
 
 static int virtaccel_prepare_args(struct virtio_accel_arg **vargs,
 				  struct accel_arg *user_args, u32 nr_args,
-				  struct virtio_device *vdev)
+				  bool write, struct virtio_device *vdev)
 {
 	struct accel_arg *args;
 	struct virtio_accel_arg *v;
@@ -99,7 +99,7 @@ static int virtaccel_prepare_args(struct virtio_accel_arg **vargs,
 	for (int i = 0; i < nr_args; ++i) {
 		v[i].len = cpu_to_virtio32(vdev, args[i].len);
 		v[i].usr_buf = args[i].buf;
-		ret = virtaccel_get_user_buf(&v[i], 1, vdev);
+		ret = virtaccel_get_user_buf(&v[i], write, vdev);
 		if (ret < 0)
 			goto free_vargs_buf;
 	}
@@ -177,7 +177,7 @@ static int virtaccel_prepare_request(struct virtio_device *vdev, u32 op_type,
 			virtio->op.in_nr);
 
 	ret = virtaccel_prepare_args(&virtio->op.out, usr_sess->op.out,
-				     virtio->op.out_nr, vdev);
+				     virtio->op.out_nr, 0, vdev);
 	if (ret < 0)
 		return ret;
 
@@ -188,7 +188,7 @@ static int virtaccel_prepare_request(struct virtio_device *vdev, u32 op_type,
 		goto free_out;
 
 	ret = virtaccel_prepare_args(&virtio->op.in, usr_sess->op.in,
-				     virtio->op.in_nr, vdev);
+				     virtio->op.in_nr, 1, vdev);
 	if (ret < 0)
 		goto free_out;
 
