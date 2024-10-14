@@ -20,7 +20,7 @@ jobs:
     needs: [check-merged]
     name: Build and Upload
     if: ${{ needs.check-merged.outputs.is-merged == 'true' }}
-    uses: nubificus/vaccel/.github/workflows/verify-build.yml@main
+    uses: ./.github/workflows/verify-build.yml
     with:
       release: true
       runner-archs: '["amd64", "arm64"]'
