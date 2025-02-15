@@ -3,7 +3,9 @@
 #ifndef _ACCEL_H
 #define _ACCEL_H
 
+#include <linux/ioctl.h>
 #include <linux/types.h>
+
 #ifndef __KERNEL__
 #define __user
 #endif
