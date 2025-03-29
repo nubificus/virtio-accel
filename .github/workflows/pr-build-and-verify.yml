@@ -60,6 +60,6 @@ jobs:
   jobs-completed:
     needs: [verify-build, validate-files-and-commits, validate-code]
     name: Jobs Completed
-    runs-on: [gcc-2204-amd64]
+    runs-on: [base-2204-amd64]
     steps:
       - run: exit 0
