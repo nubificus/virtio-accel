@@ -50,9 +50,19 @@ struct virtio_accel {
 	struct list_head sessions;
 };
 
+struct virtio_accel_arg {
+	struct virtio_accel_arg_hdr hdr;
+	u8 *buf;
+	u8 __user *usr_buf;
+	u8 *usr_pages;
+	u32 usr_npages;
+};
+
 struct virtio_accel_req {
 	struct virtio_accel_hdr hdr;
 	struct virtio_accel *vaccel;
+	struct virtio_accel_arg *out_args;
+	struct virtio_accel_arg *in_args;
 	struct scatterlist **sgs;
 	unsigned int out_sgs;
 	unsigned int in_sgs;

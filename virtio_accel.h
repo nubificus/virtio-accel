@@ -17,20 +17,10 @@
 #define VIRTIO_ACCEL_NOTSUPP 3
 #define VIRTIO_ACCEL_INVSESS 4 /* Invalid session id */
 
-struct virtio_accel_arg {
+struct virtio_accel_arg_hdr {
 	__virtio32 len;
-	__u8 *buf;
-	__u8 __user *usr_buf;
-	__u8 *usr_pages;
-	__virtio32 usr_npages;
-	__u8 padding[5];
-};
-
-struct virtio_accel_op {
-	__virtio32 in_nr;
-	__virtio32 out_nr;
-	struct virtio_accel_arg *in;
-	struct virtio_accel_arg *out;
+	__virtio32 type;
+	__virtio32 custom_type_id;
 };
 
 struct virtio_accel_hdr {
@@ -43,8 +33,8 @@ struct virtio_accel_hdr {
 #define VIRTIO_ACCEL_GET_TIMERS 4
 	__virtio32 op_type;
 
-	/* session create structs */
-	struct virtio_accel_op op;
+	__virtio32 out_nr;
+	__virtio32 in_nr;
 };
 
 struct virtio_accel_conf {
