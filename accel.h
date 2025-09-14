@@ -21,6 +21,8 @@
 struct accel_arg {
 	__u32 len;
 	__u8 __user *buf;
+	__u8 type;
+	__u32 custom_type_id;
 };
 
 struct accel_op {
@@ -39,6 +41,7 @@ struct accel_op {
 
 struct accel_session {
 	/* Session id */
+	// FIXME: use correct type
 	__u32 id;
 
 	/* Operation performed currently */
