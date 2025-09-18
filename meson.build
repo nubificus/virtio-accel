@@ -30,6 +30,7 @@ virtio_accel_sources = files([
   'virtio_accel-zc.c'])
 
 env_vars = {
+  'CC': meson.get_compiler('c').cmd_array()[0],
   'DEBUG': debug,
   'ZC': opt_zc.to_int().to_string(),
   'PROFILING': opt_profiling.to_int().to_string(),
@@ -51,6 +52,20 @@ virtio_accel = custom_target('virtio-accel',
     {'BUILD_DIR': meson.current_build_dir() / 'virtio_accel.ko.p'},
   command : [make_sh, make_bin,
     meson.current_source_dir(), meson.current_build_dir(), 'virtio_accel.ko'])
+
+compile_commands_json = custom_target('compile-commands-json',
+  capture : false,
+  console : true,
+  build_always_stale : not meson.is_subproject(),
+  build_by_default : not meson.is_subproject(),
+  input : files('Makefile') + virtio_accel,
+  output : ['compile_commands.json'],
+  install : false,
+  env : env_vars +
+    {'BUILD_DIR': meson.current_build_dir() / 'virtio_accel.ko.p'},
+  command : [make_sh, make_bin,
+    meson.current_source_dir(), meson.current_build_dir(),
+    'compile_commands.json', 'compile_commands.json'])
 
 virtio_accel_headers_dep = declare_dependency(
   include_directories : include_directories('.'))
