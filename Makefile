@@ -46,11 +46,14 @@ $(BUILD_DIR)/virtio_accel-ver.h: virtio_accel-ver.h.in
 	sed -e "s/@VIRTIO_ACCEL_VERSION@/$${VERSION}/g" < $< > $@
 
 modules: $(BUILD_DIR)/virtio_accel-ver.h
-	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules
+	$(MAKE) CC=$(CC) $(KMAKE_OPTS) $(KVERBOSE) $@
+
+compile_commands.json: modules
+	$(MAKE) CC=$(CC) $(KMAKE_OPTS) $(KVERBOSE) $@
 
 modules_install:
-	$(MAKE) $(KMAKE_OPTS) $(KVERBOSE) modules_install
+	$(MAKE) CC=$(CC) $(KMAKE_OPTS) $(KVERBOSE) $@
 
 clean:
-	$(MAKE) $(KMAKE_OPTS) clean
+	$(MAKE) CC=$(CC) $(KMAKE_OPTS) $@
 	rm -f $(BUILD_DIR)/virtio_accel-ver.h
