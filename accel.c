@@ -43,6 +43,7 @@ static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
 	}
 	//virtaccel_timer_stop("accel > create sess obj", sess);
 
+	init_completion(&req->completion);
 	req->usr = arg;
 	req->priv = sess;
 	req->vaccel = vaccel;

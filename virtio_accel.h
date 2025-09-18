@@ -24,6 +24,7 @@ struct virtio_accel_arg_hdr {
 };
 
 struct virtio_accel_hdr {
+	__virtio64 request_id;
 	__virtio32 sess_id;
 
 #define VIRTIO_ACCEL_NO_OP 0
@@ -35,6 +36,8 @@ struct virtio_accel_hdr {
 
 	__virtio32 out_nr;
 	__virtio32 in_nr;
+
+	__virtio32 total_chunks;
 };
 
 struct virtio_accel_conf {
