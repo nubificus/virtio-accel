@@ -169,13 +169,20 @@ static int virtaccel_prepare_request(struct virtio_device *vdev, u32 op_type,
 	int ret;
 	int total_sgs = 0;
 
+	atomic_set(&req->chunk_count, 0);
+	req->parent = NULL;
+	req->status = 0;
+	req->ret = 0;
+
+	h->request_id = 0;
 	h->sess_id = cpu_to_virtio32(vdev, usr_sess->id);
 	h->op_type = cpu_to_virtio32(vdev, op_type);
 	h->out_nr = cpu_to_virtio32(vdev, op->out_nr);
 	h->in_nr = cpu_to_virtio32(vdev, op->in_nr);
 
-	virtaccel_debug("Request id: %d, type: %d, out_nr: %d, in_nr: %d\n",
-			h->sess_id, h->op_type, h->out_nr, h->in_nr);
+	virtaccel_debug(
+		"Request sess_id: %d, type: %d, out_nr: %d, in_nr: %d\n",
+		h->sess_id, h->op_type, h->out_nr, h->in_nr);
 
 	ret = virtaccel_prepare_args(&req->out_args, usr_sess->op.out,
 				     h->out_nr, 0, vdev);
@@ -836,24 +843,328 @@ void virtaccel_handle_req_result(struct virtio_accel_req *req)
 	}
 }
 
-int virtaccel_do_req(struct virtio_accel_req *req)
+static uint64_t generate_request_id(struct virtio_accel *vaccel)
+{
+	return atomic64_fetch_inc(&vaccel->next_request_id);
+}
+
+static int submit_single_req(struct virtio_accel_req *req)
 {
 	struct virtio_accel *va = req->vaccel;
 	int ret;
 	unsigned long flags;
 
-	init_completion(&req->completion);
-
-	// select vq[0] explicitly for now
+	// Select vq[0] explicitly for now
 	spin_lock_irqsave(&va->vq[0].lock, flags);
 	ret = virtqueue_add_sgs(va->vq[0].vq, req->sgs, req->out_sgs,
 				req->in_sgs, req, GFP_ATOMIC);
-	virtqueue_kick(va->vq[0].vq);
-	spin_unlock_irqrestore(&va->vq[0].lock, flags);
 	if (unlikely(ret < 0)) {
+		spin_unlock_irqrestore(&va->vq[0].lock, flags);
 		virtaccel_clear_req(req);
 		return ret;
 	}
 
+	virtqueue_kick(va->vq[0].vq);
+	spin_unlock_irqrestore(&va->vq[0].lock, flags);
+
 	return -EINPROGRESS;
+}
+
+static unsigned int count_total_sgs(struct virtio_accel_req *req)
+{
+	unsigned int i;
+	unsigned int total = 0;
+
+	for (i = 0; i < req->out_sgs; i++)
+		total += sg_nents(req->sgs[i]);
+
+	for (i = 0; i < req->in_sgs; i++)
+		total += sg_nents(req->sgs[req->out_sgs + i]);
+
+	return total;
+}
+
+static struct scatterlist *create_sg_subchain(struct scatterlist *orig_chain,
+					      unsigned int start_idx,
+					      unsigned int count)
+{
+	struct scatterlist *new_chain, *sg;
+	unsigned int i, idx = 0;
+
+	if (count == 0)
+		return NULL;
+
+	new_chain = kcalloc(count, sizeof(struct scatterlist), GFP_KERNEL);
+	if (!new_chain)
+		return NULL;
+
+	sg_init_table(new_chain, count);
+
+	// Walk original chain to find entries to copy
+	for_each_sg(orig_chain, sg, sg_nents(orig_chain), i)
+	{
+		if (i >= start_idx && idx < count) {
+			sg_set_page(&new_chain[idx], sg_page(sg), sg->length,
+				    sg->offset);
+			idx++;
+			if (idx >= count)
+				break;
+		}
+	}
+
+	// Mark the last entry in the new chain
+	if (idx > 0)
+		sg_mark_end(&new_chain[idx - 1]);
+
+	return new_chain;
+}
+
+static unsigned int
+collect_chunk_sgs(struct scatterlist **sgs, unsigned int out_sgs,
+		  unsigned int in_sgs, unsigned int sg_offset,
+		  unsigned int chunk_sg_count, struct scatterlist **chunk_sgs,
+		  unsigned int *chunk_sg_collect_count,
+		  unsigned int *chunk_out_sgs, unsigned int *chunk_in_sgs,
+		  struct chunk_sg_allocs *chunk_allocs)
+{
+	unsigned int curr_sg_idx = 0;
+	unsigned int chunk_sg_idx = 0;
+	unsigned int collect_sg_total_count = 0;
+	unsigned int collect_out_sgs = 0;
+	unsigned int collect_in_sgs = 0;
+	unsigned int sg_count = out_sgs + in_sgs;
+	unsigned int ent_idx;
+	unsigned int i;
+	struct chunk_sg_allocs *allocs = chunk_allocs ? chunk_allocs : NULL;
+
+	if (allocs) {
+		allocs->chains = kcalloc(chunk_sg_count,
+					 sizeof(*allocs->chains), GFP_KERNEL);
+		if (!allocs->chains)
+			return 0;
+	}
+
+	// Walk through sg entries
+	for (ent_idx = 0;
+	     ent_idx < sg_count && collect_sg_total_count < chunk_sg_count;
+	     ent_idx++) {
+		struct scatterlist *ent_sg_chain = sgs[ent_idx];
+		if (!ent_sg_chain)
+			continue;
+
+		unsigned int ent_sg_total_count = sg_nents(ent_sg_chain);
+		unsigned int ent_start = curr_sg_idx;
+		unsigned int ent_end = curr_sg_idx + ent_sg_total_count - 1;
+		unsigned int chunk_start = sg_offset;
+		unsigned int chunk_end = sg_offset + chunk_sg_count;
+
+		// This entry overlaps with our chunk
+		unsigned int ent_chunk_offset =
+			max(ent_start, chunk_start) - ent_start;
+		unsigned int ent_collect_sgs =
+			min(ent_sg_total_count - ent_chunk_offset,
+			    chunk_sg_count - collect_sg_total_count);
+
+		virtaccel_debug(
+			"Processing SG entry %u with %u chained entries\n",
+			ent_idx, ent_sg_total_count);
+
+		if (ent_end < chunk_start) {
+			// This entire entry is before our chunk
+			curr_sg_idx += ent_sg_total_count;
+			continue;
+		}
+
+		if (ent_start >= chunk_end) {
+			// This entry starts after our chunk
+			break;
+		}
+
+		virtaccel_debug(
+			"  Taking %u SGs from entry %u (starting at offset %u)\n",
+			ent_collect_sgs, ent_idx, ent_chunk_offset);
+
+		if (ent_collect_sgs == ent_sg_total_count &&
+		    ent_chunk_offset == 0) {
+			// Take the entire argument chain as-is
+			chunk_sgs[chunk_sg_idx] = ent_sg_chain;
+			virtaccel_debug("  Using complete entry chain\n");
+		} else {
+			// Create a new sub-chain
+			struct scatterlist *new_chain = create_sg_subchain(
+				ent_sg_chain, ent_chunk_offset,
+				ent_collect_sgs);
+			if (!new_chain) {
+				virtaccel_err("Failed to create sub-chain\n");
+				goto free_allocs;
+			}
+			chunk_sgs[chunk_sg_idx] = new_chain;
+			if (allocs)
+				allocs->chains[allocs->count++] = new_chain;
+			virtaccel_debug(
+				"  Created new sub-chain with %u entries\n",
+				ent_collect_sgs);
+		}
+
+		chunk_sg_idx++;
+		collect_sg_total_count += ent_collect_sgs;
+
+		if (ent_idx < out_sgs)
+			collect_out_sgs++;
+		else
+			collect_in_sgs++;
+
+		curr_sg_idx += ent_sg_total_count;
+
+		if (collect_sg_total_count >= chunk_sg_count)
+			break;
+	}
+
+	if (chunk_out_sgs)
+		*chunk_out_sgs = collect_out_sgs;
+	if (chunk_in_sgs)
+		*chunk_in_sgs = collect_in_sgs;
+	if (chunk_sg_collect_count)
+		*chunk_sg_collect_count = chunk_sg_idx;
+
+	virtaccel_debug(
+		"Collected %u data SGs/SG chains (%u out, %u in), %u total data SGs\n",
+		chunk_sg_idx, collect_out_sgs, collect_in_sgs,
+		collect_sg_total_count);
+
+	return collect_sg_total_count;
+
+free_allocs:
+	for (i = 0; i < allocs->count; i++)
+		kfree(allocs->chains[i]);
+
+	kfree(allocs->chains);
+
+	return 0;
+}
+
+static unsigned int create_chunk_request(struct virtio_accel_req *parent,
+					 unsigned int chunk_sg_max_count,
+					 unsigned int sg_data_offset,
+					 unsigned int sg_total_count,
+					 struct virtio_accel_req **chunk_req)
+{
+	unsigned int chunk_sg_data_count = min(
+		chunk_sg_max_count - 2, sg_total_count - 1 - sg_data_offset);
+	unsigned int chunk_sg_count = chunk_sg_data_count + 2;
+	unsigned int sg_count = parent->out_sgs + parent->in_sgs;
+	unsigned int collect_sg_count;
+	unsigned int collect_sg_total_count;
+	struct scatterlist **chunk_sgs;
+
+	struct virtio_accel_req *chunk = kmalloc(sizeof(*chunk), GFP_KERNEL);
+	if (!chunk)
+		return 0;
+
+	// Allocate chunk sgs for the total SG count
+	// FIXME: Only a small part of this will be used; calculate the actual
+	// entry count instead of using the total count
+	chunk_sgs = kcalloc(chunk_sg_count, sizeof(*chunk_sgs), GFP_KERNEL);
+	if (!chunk_sgs)
+		goto free_chunk;
+
+	virtaccel_debug("Creating chunk: data_offset=%u, count=%u\n",
+			sg_data_offset, chunk_sg_count);
+
+	*chunk = *parent;
+	chunk->parent = parent;
+	chunk->chunk_allocs.chains = NULL;
+	chunk->chunk_allocs.count = 0;
+
+	// Create data SG subset for this chunk
+	collect_sg_total_count = collect_chunk_sgs(
+		&parent->sgs[1], parent->out_sgs - 1, parent->in_sgs - 1,
+		sg_data_offset, chunk_sg_data_count, &chunk_sgs[1],
+		&collect_sg_count, &chunk->out_sgs, &chunk->in_sgs,
+		&chunk->chunk_allocs);
+	if (!collect_sg_total_count)
+		goto free_chunk_sgs;
+
+	// First entry is always the header (shared across all chunks)
+	chunk_sgs[0] = parent->sgs[0];
+	chunk->out_sgs++;
+
+	// Last entry is always the status (shared across all chunks)
+	chunk_sgs[collect_sg_count + 1] = parent->sgs[sg_count - 1];
+	chunk->in_sgs++;
+
+	chunk->sgs = chunk_sgs;
+	*chunk_req = chunk;
+
+	virtaccel_debug("Chunk created with out_sgs=%u, in_sgs=%u\n",
+			chunk->out_sgs, chunk->in_sgs);
+
+	return collect_sg_total_count;
+
+free_chunk_sgs:
+	kfree(chunk_sgs);
+free_chunk:
+	kfree(chunk);
+
+	return 0;
+}
+
+static unsigned int calculate_sg_chunks(unsigned int sg_total_count,
+					unsigned int chunk_sg_max_count)
+{
+	unsigned int sg_total_data_count =
+		sg_total_count - 2; // exclude header + status
+	unsigned int chunk_sg_max_data_count =
+		chunk_sg_max_count - 2; // add per-chunk header + status
+
+	return DIV_ROUND_UP(sg_total_data_count, chunk_sg_max_data_count);
+}
+
+static int submit_chunked_req(struct virtio_accel_req *parent_req)
+{
+	struct virtio_accel *vaccel = parent_req->vaccel;
+	unsigned int sg_total_count = count_total_sgs(parent_req);
+	unsigned int total_chunks =
+		calculate_sg_chunks(sg_total_count, MAX_SGS_PER_CHUNK);
+	unsigned int sg_data_offset = 0;
+	unsigned int i;
+	int ret;
+
+	parent_req->hdr.request_id = generate_request_id(vaccel);
+	parent_req->hdr.total_chunks = total_chunks;
+	atomic_set(&parent_req->chunk_count, total_chunks);
+
+	for (i = 0; i < total_chunks; i++) {
+		struct virtio_accel_req *chunk_req;
+
+		unsigned int sg_collect_count = create_chunk_request(
+			parent_req, MAX_SGS_PER_CHUNK, sg_data_offset,
+			sg_total_count, &chunk_req);
+		if (!sg_collect_count)
+			return -ENOMEM;
+
+		// FIXME: cleanup
+
+		virtaccel_debug("Submitting chunk %u for request id %llu\n", i,
+				chunk_req->hdr.request_id);
+
+		ret = submit_single_req(chunk_req);
+		if (ret != -EINPROGRESS)
+			return ret;
+
+		sg_data_offset += sg_collect_count;
+	}
+
+	return -EINPROGRESS;
+}
+
+int virtaccel_do_req(struct virtio_accel_req *req)
+{
+	unsigned int sg_total_count = count_total_sgs(req);
+
+	if (sg_total_count <= VIRTQUEUE_MAX_SIZE) {
+		return submit_single_req(req);
+	} else {
+		return submit_chunked_req(req);
+	}
 }

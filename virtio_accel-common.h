@@ -22,6 +22,9 @@
 #define PAGEOFFSET(buf) ((unsigned long)(buf) & ~PAGE_MASK)
 #define VQ_NAME_LEN 16
 
+#define VIRTQUEUE_MAX_SIZE 1024
+#define MAX_SGS_PER_CHUNK 512
+
 struct virtio_accel_sess {
 	u32 id;
 
@@ -48,6 +51,7 @@ struct virtio_accel {
 	atomic_t ref_count;
 	uint8_t dev_id;
 	struct list_head sessions;
+	atomic64_t next_request_id;
 };
 
 struct virtio_accel_arg {
@@ -58,6 +62,11 @@ struct virtio_accel_arg {
 	u32 usr_npages;
 };
 
+struct chunk_sg_allocs {
+	struct scatterlist **chains;
+	unsigned int count;
+};
+
 struct virtio_accel_req {
 	struct virtio_accel_hdr hdr;
 	struct virtio_accel *vaccel;
@@ -66,6 +75,9 @@ struct virtio_accel_req {
 	struct scatterlist **sgs;
 	unsigned int out_sgs;
 	unsigned int in_sgs;
+	struct virtio_accel_req *parent;
+	atomic_t chunk_count;
+	struct chunk_sg_allocs chunk_allocs;
 	void *priv;
 	void __user *usr;
 	struct completion completion;
