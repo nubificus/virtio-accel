@@ -14,17 +14,6 @@
 #include "virtio_accel-common.h"
 #include "virtio_accel-ver.h"
 
-static void cleanup_chunk_allocs(struct chunk_sg_allocs *allocs)
-{
-	if (!allocs)
-		return;
-
-	for (unsigned int i = 0; i < allocs->count; i++) {
-		kfree(allocs->chains[i]);
-	}
-	kfree(allocs->chains);
-}
-
 static void virtaccel_dataq_callback(struct virtqueue *vq)
 {
 	struct virtio_accel *vaccel = vq->vdev->priv;
@@ -42,21 +31,18 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-			if (req->parent != NULL) {
+			virtaccel_debug("dataq callback: status=%u\n",
+					req->status);
+
+			if (req->parent) {
+				// This is a chunk completion
 				struct virtio_accel_req *parent = req->parent;
 
-				// This is a chunk completion
 				spin_unlock_irqrestore(&vaccel->vq[qid].lock,
 						       flags);
+				virtaccel_req_delete(req);
 
-				// FIXME: common/proper cleanup
-				cleanup_chunk_allocs(&req->chunk_allocs);
-				kfree(req->sgs);
-				kfree(req);
-
-				// Decrement counter and complete parent if last chunk
-				if (!atomic_dec_and_test(
-					    &parent->chunk_count)) {
+				if (atomic_read(&parent->chunk_count)) {
 					spin_lock_irqsave(&vaccel->vq[qid].lock,
 							  flags);
 					continue;
@@ -67,8 +53,6 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 			}
 
 			// Regular request completion
-			virtaccel_debug("dataq callback: status=%u\n",
-					req->status);
 			switch (req->status) {
 			case VIRTIO_ACCEL_OK:
 				req->ret = 0;
@@ -86,7 +70,10 @@ static void virtaccel_dataq_callback(struct virtqueue *vq)
 			}
 
 			spin_unlock_irqrestore(&vaccel->vq[qid].lock, flags);
-			complete_all(&req->completion);
+			if (!completion_done(&req->completion))
+				complete(&req->completion);
+			else
+				virtaccel_req_delete(req);
 			spin_lock_irqsave(&vaccel->vq[qid].lock, flags);
 		}
 	} while (!virtqueue_enable_cb(vq));

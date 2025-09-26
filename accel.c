@@ -15,103 +15,112 @@
 #include "virtio_accel-common.h"
 #include "virtio_accel-prof.h"
 
-static long accel_dev_ioctl(struct file *filp, unsigned int cmd,
-			    unsigned long _arg)
+static struct accel_op *accel_op_new(void)
 {
-	void __user *arg = (void __user *)_arg;
-	struct virtio_accel_file *vaccel_file = filp->private_data;
-	struct virtio_accel *vaccel = vaccel_file->vaccel;
+	struct accel_op *op = NULL;
+
+	op = kmalloc(sizeof(*op), GFP_KERNEL);
+	if (!op)
+		return NULL;
+
+	op->session_id = 0;
+	op->op_code = 0;
+	op->out_nr = 0;
+	op->in_nr = 0;
+	op->out = NULL;
+	op->in = NULL;
+	op->ret = 0;
+
+	return op;
+}
+
+static int parse_ioctl_arg(void __user *arg, unsigned int cmd,
+			   struct accel_op *op)
+{
+	switch (cmd) {
+	case ACCEL_SESS_CREATE:
+		if (unlikely(copy_from_user(op, arg, sizeof(*op))))
+			return -EFAULT;
+
+		return VIRTIO_ACCEL_CMD_CREATE_SESSION;
+	case ACCEL_SESS_DESTROY:
+		if (unlikely(copy_from_user(&op->session_id, arg,
+					    sizeof(op->session_id))))
+			return -EFAULT;
+
+		return VIRTIO_ACCEL_CMD_DESTROY_SESSION;
+	case ACCEL_DO_OP:
+		if (unlikely(copy_from_user(op, arg, sizeof(*op))))
+			return -EFAULT;
+
+		return VIRTIO_ACCEL_CMD_DO_OP;
+	case ACCEL_GET_TIMERS:
+		if (unlikely(copy_from_user(op, arg, sizeof(*op))))
+			return -EFAULT;
+
+		return VIRTIO_ACCEL_CMD_GET_TIMERS;
+	default:
+		virtaccel_err("Invalid IOCTL\n");
+		return -ENOIOCTLCMD;
+	}
+}
+
+static long accel_dev_ioctl(struct file *file, unsigned int cmd,
+			    unsigned long arg_p)
+{
+	void __user *arg = (void __user *)arg_p;
+	struct virtio_accel_file *vaccel_file = file->private_data;
 	struct virtio_accel_req *req;
-	struct accel_session *sess = NULL;
-	struct virtio_accel_sess *vsess = NULL;
+	struct accel_op *op;
+	struct virtio_accel_sess *sess = NULL;
+	u32 virtio_cmd;
 	int ret;
 
-	//virtaccel_timer_start("accel > create sess obj", sess);
-	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	req = virtaccel_req_new(vaccel_file->vaccel, arg);
 	if (!req)
 		return -ENOMEM;
 
-	sess = kmalloc(sizeof(*sess), GFP_KERNEL);
-	if (!sess) {
+	op = accel_op_new();
+	if (!op) {
 		ret = -ENOMEM;
 		goto err_req;
 	}
+	req->priv = op;
 
-	if (unlikely(copy_from_user(sess, arg, sizeof(*sess)))) {
-		ret = -EFAULT;
+	ret = parse_ioctl_arg(arg, cmd, op);
+	if (ret < 0)
 		goto err_req;
-	}
-	//virtaccel_timer_stop("accel > create sess obj", sess);
+	else
+		virtio_cmd = (u32)ret;
 
-	init_completion(&req->completion);
-	req->usr = arg;
-	req->priv = sess;
-	req->vaccel = vaccel;
-
-	switch (cmd) {
-	case VACCEL_SESS_CREATE:
-		//virtaccel_timer_start("accel > create session", sess);
-		ret = virtaccel_req_create_session(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-		break;
-	case VACCEL_SESS_DESTROY:
-		//virtaccel_timer_start("accel > destroy session", sess);
-		ret = virtaccel_req_destroy_session(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-		break;
-	case VACCEL_DO_OP:
-		vsess = virtaccel_session_get_by_id(sess->id, req);
-		virtaccel_timer_start("accel > do op", vsess);
-		ret = virtaccel_req_operation(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-		break;
-	case VACCEL_GET_TIMERS:
-		ret = virtaccel_req_timers(req);
-		if (ret != -EINPROGRESS)
-			goto err_req;
-		break;
-	default:
-		virtaccel_err("Invalid IOCTL\n");
-		ret = -EFAULT;
-		goto err;
+	if (cmd == ACCEL_DO_OP) {
+		sess = virtaccel_session_get_by_id(op->session_id, req);
+		virtaccel_timer_start("accel > do op", sess);
 	}
+
+	ret = virtaccel_req_operation(req, virtio_cmd);
+	if (ret != -EINPROGRESS)
+		goto err_req;
 
 	virtaccel_debug("Waiting for request to complete\n");
-	wait_for_completion_killable(&req->completion);
-	virtaccel_handle_req_result(req);
-	virtaccel_clear_req(req);
-	reinit_completion(&req->completion);
+	ret = wait_for_completion_killable(&req->completion);
+	if (ret)
+		goto err_req;
 
-	//virtaccel_timer_stop("accel > create session", sess);
-	//virtaccel_timer_stop("accel > destroy session", sess);
-	virtaccel_timer_stop("accel > do op", vsess);
+	virtaccel_req_handle_result(req);
+	ret = req->ret;
 	virtaccel_debug("Request completed\n");
 
+err_req:
+	virtaccel_timer_stop("accel > do op", sess);
 	//virtaccel_timer_print_all_total(sess);
 
-	ret = req->ret;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	kzfree(req);
-#else
-	kfree_sensitive(req);
-#endif
-	return ret;
-
-err_req:
-	kfree(sess);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	kzfree(req);
-#else
-	kfree_sensitive(req);
-#endif
-err:
+	virtaccel_req_delete(req);
+	kfree(op);
 	return ret;
 }
 
-static int accel_dev_open(struct inode *inode, struct file *filp)
+static int accel_dev_open(struct inode *inode, struct file *file)
 {
 	struct virtio_accel *vaccel = virtaccel_devmgr_get_first();
 	struct virtio_accel_file *vaccel_file;
@@ -126,14 +135,14 @@ static int accel_dev_open(struct inode *inode, struct file *filp)
 	vaccel->dev_minor = iminor(inode);
 
 	vaccel_file->vaccel = vaccel;
-	filp->private_data = vaccel_file;
+	file->private_data = vaccel_file;
 
-	return nonseekable_open(inode, filp);
+	return nonseekable_open(inode, file);
 }
 
-static int accel_dev_release(struct inode *inode, struct file *filp)
+static int accel_dev_release(struct inode *inode, struct file *file)
 {
-	struct virtio_accel_file *vaccel_file = filp->private_data;
+	struct virtio_accel_file *vaccel_file = file->private_data;
 
 	kfree(vaccel_file);
 	return 0;

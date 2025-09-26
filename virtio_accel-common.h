@@ -30,6 +30,7 @@ struct virtio_accel_sess {
 
 #define TIMERS_BUCKET_CNT (1u << 4) // 16
 	struct hlist_head timers[TIMERS_BUCKET_CNT];
+
 	unsigned int nr_timers;
 	struct list_head node;
 };
@@ -56,10 +57,10 @@ struct virtio_accel {
 
 struct virtio_accel_arg {
 	struct virtio_accel_arg_hdr hdr;
-	u8 *buf;
-	u8 __user *usr_buf;
-	u8 *usr_pages;
-	u32 usr_npages;
+	void *buf;
+	void __user *usr_buf;
+	struct page **usr_pages;
+	unsigned int usr_npages;
 };
 
 struct chunk_sg_allocs {
@@ -72,16 +73,20 @@ struct virtio_accel_req {
 	struct virtio_accel *vaccel;
 	struct virtio_accel_arg *out_args;
 	struct virtio_accel_arg *in_args;
+
 	struct scatterlist **sgs;
 	unsigned int out_sgs;
 	unsigned int in_sgs;
+
 	struct virtio_accel_req *parent;
 	atomic_t chunk_count;
 	struct chunk_sg_allocs chunk_allocs;
+
 	void *priv;
 	void __user *usr;
 	struct completion completion;
-	u32 status;
+
+	u8 status;
 	int ret;
 };
 
@@ -108,13 +113,15 @@ int virtaccel_dev_start(struct virtio_accel *vaccel);
 void virtaccel_dev_stop(struct virtio_accel *vaccel);
 
 /* virtio_accel-reqs */
-int virtaccel_req_create_session(struct virtio_accel_req *req);
-int virtaccel_req_destroy_session(struct virtio_accel_req *req);
-int virtaccel_req_operation(struct virtio_accel_req *req);
-int virtaccel_req_timers(struct virtio_accel_req *req);
-void virtaccel_clear_req(struct virtio_accel_req *req);
-void virtaccel_handle_req_result(struct virtio_accel_req *req);
-int virtaccel_do_req(struct virtio_accel_req *req);
+struct virtio_accel_req *virtaccel_req_new(struct virtio_accel *vaccel,
+					   void __user *usr);
+struct virtio_accel_req *
+virtaccel_req_new_with_parent(struct virtio_accel_req *parent);
+void virtaccel_req_clear(struct virtio_accel_req *req);
+void virtaccel_req_delete(struct virtio_accel_req *req);
+int virtaccel_req_operation(struct virtio_accel_req *req, u32 cmd);
+void virtaccel_req_handle_result(struct virtio_accel_req *req);
+int virtaccel_req_submit(struct virtio_accel_req *req);
 
 /* virtio_accel-zc */
 int virtaccel_map_user_buf(struct sg_table **m_sgt, struct page ***m_pages,
@@ -126,11 +133,9 @@ void virtaccel_unmap_user_buf(struct sg_table *m_sgt, struct page **m_pages,
 
 /* virtio_accel-session */
 struct virtio_accel_sess *
-virtaccel_session_create_and_add(struct accel_session *accel_sess,
-				 struct virtio_accel_req *req);
-void virtaccel_session_delete(struct accel_session *accel_sess,
-			      struct virtio_accel_req *req);
+virtaccel_session_create_and_add(u64 id, struct virtio_accel_req *req);
+void virtaccel_session_delete(u64 id, struct virtio_accel_req *req);
 struct virtio_accel_sess *
-virtaccel_session_get_by_id(u32 id, struct virtio_accel_req *req);
+virtaccel_session_get_by_id(u64 id, struct virtio_accel_req *req);
 
 #endif /* _VIRTIO_ACCEL_COMMON_H */

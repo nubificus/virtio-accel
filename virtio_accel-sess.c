@@ -6,12 +6,15 @@
 #include "virtio_accel-prof.h"
 
 struct virtio_accel_sess *
-virtaccel_session_create_and_add(struct accel_session *accel_sess,
-				 struct virtio_accel_req *req)
+virtaccel_session_create_and_add(u64 id, struct virtio_accel_req *req)
 {
 	struct virtio_accel_sess *sess = kzalloc(sizeof(*sess), GFP_KERNEL);
+
+	if (!id)
+		return NULL;
+
 	if (sess) {
-		sess->id = accel_sess->id;
+		sess->id = id;
 		sess->nr_timers = 0;
 		virtaccel_timers_init(sess);
 		list_add_tail(&sess->node, &req->vaccel->sessions);
@@ -20,18 +23,17 @@ virtaccel_session_create_and_add(struct accel_session *accel_sess,
 	return sess;
 }
 
-void virtaccel_session_delete(struct accel_session *accel_sess,
-			      struct virtio_accel_req *req)
+void virtaccel_session_delete(u64 id, struct virtio_accel_req *req)
 {
 	struct virtio_accel_sess *s = NULL;
 	struct virtio_accel_sess *tmp;
 
-	if (!accel_sess)
+	if (!id)
 		return;
 
 	list_for_each_entry_safe(s, tmp, &req->vaccel->sessions, node)
 	{
-		if (s->id == accel_sess->id) {
+		if (s->id == id) {
 			list_del(&s->node);
 			virtaccel_timers_free(s);
 			kfree(s);
@@ -40,10 +42,13 @@ void virtaccel_session_delete(struct accel_session *accel_sess,
 }
 
 struct virtio_accel_sess *
-virtaccel_session_get_by_id(u32 id, struct virtio_accel_req *req)
+virtaccel_session_get_by_id(u64 id, struct virtio_accel_req *req)
 {
 	struct virtio_accel_sess *s = NULL;
 	struct virtio_accel_sess *tmp;
+
+	if (!id)
+		return NULL;
 
 	list_for_each_entry_safe(s, tmp, &req->vaccel->sessions, node)
 	{

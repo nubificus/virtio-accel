@@ -13,39 +13,39 @@
 #define TIMERS_NAME_MAX 64
 
 /* IOCTLs */
-#define VACCEL_SESS_CREATE _IOWR('@', 0, struct accel_session)
-#define VACCEL_SESS_DESTROY _IOWR('@', 1, struct accel_session)
-#define VACCEL_DO_OP _IOWR('@', 2, struct accel_session)
-#define VACCEL_GET_TIMERS _IOWR('@', 3, struct accel_session)
+#define ACCEL_SESS_CREATE _IOWR('@', 0, struct accel_op)
+#define ACCEL_SESS_DESTROY _IOWR('@', 1, __u64)
+#define ACCEL_DO_OP _IOWR('@', 2, struct accel_op)
+#define ACCEL_GET_TIMERS _IOWR('@', 3, struct accel_op)
 
 struct accel_arg {
+	__u64 buf;
 	__u32 len;
-	__u8 __user *buf;
-	__u8 type;
+	__u32 type;
 	__u32 custom_type_id;
 };
 
 struct accel_op {
-	/* Number of in arguments */
-	__u32 in_nr;
+	/* Session id */
+	__u64 session_id;
 
-	/* Pointer to in arguments */
-	struct accel_arg __user *in;
+	/* User-defined operation code */
+	__u32 op_code;
 
 	/* Number of out arguments */
 	__u32 out_nr;
 
+	/* Number of in arguments */
+	__u32 in_nr;
+
 	/* Pointer to out arguments */
 	struct accel_arg __user *out;
-};
 
-struct accel_session {
-	/* Session id */
-	// FIXME: use correct type
-	__u32 id;
+	/* Pointer to in arguments */
+	struct accel_arg __user *in;
 
-	/* Operation performed currently */
-	struct accel_op op;
+	/* Operation return value */
+	__u32 ret;
 };
 
 struct accel_prof_sample {
