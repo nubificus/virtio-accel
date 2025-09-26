@@ -94,15 +94,8 @@ int virtaccel_timer_start(char *name, struct virtio_accel_sess *sess)
 #ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 
-	if (!profiling)
+	if (!profiling || !name || !sess || !sess->id)
 		return 0;
-
-	if (!sess) {
-		virtaccel_warn(
-			"Session not found. Timer '%s' will not be created.",
-			name);
-		return 0;
-	}
 
 	timer = timer_get_by_name(name, sess);
 	if (timer == NULL) {
@@ -122,10 +115,7 @@ void virtaccel_timer_stop(char *name, struct virtio_accel_sess *sess)
 #ifdef PROFILING
 	struct virtio_accel_timer *timer = NULL;
 
-	if (!profiling)
-		return;
-
-	if (!sess)
+	if (!profiling || !name || !sess || !sess->id)
 		return;
 
 	timer = timer_get_by_name(name, sess);
@@ -371,6 +361,7 @@ int virtaccel_timers_print_all_total_to_buf(struct accel_arg *tbuf,
 	struct virtio_accel_timer *timer = NULL;
 	int bkt, ssize = 0, size = 0;
 	s64 time = 0;
+	void *buf;
 
 	if (!profiling)
 		return 0;
@@ -389,18 +380,18 @@ int virtaccel_timers_print_all_total_to_buf(struct accel_arg *tbuf,
 	if (tbuf == NULL)
 		return ssize;
 
-	tbuf->buf = kzalloc(tbuf->len, GFP_KERNEL);
-	if (!tbuf->buf)
+	buf = kzalloc(tbuf->len, GFP_KERNEL);
+	if (!buf)
 		return -ENOMEM;
 
 	hash_for_each(sess->timers, bkt, timer, node)
 	{
 		time = timer_sample_get_total(timer);
-		size += scnprintf(tbuf->buf + size, tbuf->len - size,
-				  FORMAT_STRING, timer->name, time,
-				  timer->nr_samples);
+		size += scnprintf(buf + size, tbuf->len - size, FORMAT_STRING,
+				  timer->name, time, timer->nr_samples);
 	}
 
+	tbuf->buf = (u64)buf;
 	return size;
 #endif
 	return 0;

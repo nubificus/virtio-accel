@@ -25,14 +25,15 @@ struct virtio_accel_arg_hdr {
 
 struct virtio_accel_hdr {
 	__virtio64 request_id;
-	__virtio32 sess_id;
+	__virtio64 session_id;
 
-#define VIRTIO_ACCEL_NO_OP 0
-#define VIRTIO_ACCEL_CREATE_SESSION 1
-#define VIRTIO_ACCEL_DESTROY_SESSION 2
-#define VIRTIO_ACCEL_DO_OP 3
-#define VIRTIO_ACCEL_GET_TIMERS 4
-	__virtio32 op_type;
+#define VIRTIO_ACCEL_CMD_CREATE_SESSION 0
+#define VIRTIO_ACCEL_CMD_DESTROY_SESSION 1
+#define VIRTIO_ACCEL_CMD_DO_OP 2
+#define VIRTIO_ACCEL_CMD_GET_TIMERS 3
+#define VIRTIO_ACCEL_CMD_MAX 4
+	__virtio32 cmd;
+	__virtio32 op_code;
 
 	__virtio32 out_nr;
 	__virtio32 in_nr;
