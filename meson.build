@@ -74,23 +74,25 @@ virtio_accel_dep = declare_dependency(
   include_directories : include_directories('.'),
   sources: virtio_accel)
 
-meson.add_install_script(make_sh, make_bin,
-  meson.current_source_dir(), meson.current_build_dir(), 'virtio_accel.ko',
-  'modules_install',
-  'BUILD_DIR='+meson.current_build_dir() / 'virtio_accel.ko.p',
-  skip_if_destdir : true)
+if not meson.is_subproject()
+  meson.add_install_script(make_sh, make_bin,
+    meson.current_source_dir(), meson.current_build_dir(), 'virtio_accel.ko',
+    'modules_install',
+    'BUILD_DIR='+meson.current_build_dir() / 'virtio_accel.ko.p',
+    skip_if_destdir : true)
 
-meson.add_dist_script(
-  'scripts/dist.sh',
-  'virtio-accel',
-  get_option('buildtype'),
-  'DEBUG',
-  debug,
-  'ZC',
-  opt_zc.to_int().to_string(),
-  'PROFILING',
-  opt_profiling.to_int().to_string(),
-  )
+  meson.add_dist_script(
+    'scripts/dist.sh',
+    'virtio-accel',
+    get_option('buildtype'),
+    'DEBUG',
+    debug,
+    'ZC',
+    opt_zc.to_int().to_string(),
+    'PROFILING',
+    opt_profiling.to_int().to_string(),
+    )
+endif
 
 # helper vars for parent projects
 version = meson.project_version()
