@@ -42,6 +42,7 @@ int virtaccel_map_user_buf(struct sg_table **m_sgt, struct page ***m_pages,
 	if (!pages)
 		return -ENOMEM;
 
+	// FIXME: Use pin_user_pages_fast intead?
 	nr_pages = get_user_pages_fast(uaddr, max_pages, write ? FOLL_WRITE : 0,
 				       pages);
 	if (nr_pages < max_pages) {

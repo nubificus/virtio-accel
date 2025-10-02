@@ -12,57 +12,105 @@
 #include <linux/wait.h>
 
 #include "accel.h"
+#include "accel-internal.h"
 #include "virtio_accel-common.h"
 #include "virtio_accel-prof.h"
 
-static struct accel_op *accel_op_new(void)
+static int accel_op_req_new(struct accel_op_req **op_req,
+			    struct accel_op __user *op)
 {
-	struct accel_op *op = NULL;
+	struct accel_op_req *req;
 
-	op = kmalloc(sizeof(*op), GFP_KERNEL);
-	if (!op)
-		return NULL;
+	if (!op_req)
+		return -EINVAL;
 
-	op->session_id = 0;
-	op->op_code = 0;
-	op->out_nr = 0;
-	op->in_nr = 0;
-	op->out = NULL;
-	op->in = NULL;
-	op->ret = 0;
+	req = kzalloc(sizeof(*req), GFP_KERNEL);
+	if (!req)
+		return -ENOMEM;
 
-	return op;
+	req->out = NULL;
+	req->in = NULL;
+
+	if (!op) {
+		*op_req = req;
+		return 0;
+	}
+
+	if (unlikely(copy_from_user(&req->u_op, op, sizeof(req->u_op))))
+		return -EFAULT;
+
+	if (req->u_op.out_nr) {
+		req->out = memdup_user(u64_to_user_ptr(req->u_op.out),
+				       req->u_op.out_nr * sizeof(*req->out));
+		if (IS_ERR(req->out))
+			return PTR_ERR(req->out);
+	}
+
+	if (req->u_op.in_nr) {
+		req->in = memdup_user(u64_to_user_ptr(req->u_op.in),
+				      req->u_op.in_nr * sizeof(*req->in));
+		if (IS_ERR(req->in)) {
+			kfree(req->out);
+			return PTR_ERR(req->in);
+		}
+	}
+
+	*op_req = req;
+	return 0;
+}
+
+static void accel_op_req_delete(struct accel_op_req *op_req)
+{
+	if (!op_req)
+		return;
+
+	kfree(op_req->out);
+	kfree(op_req->in);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+	kzfree(op_req);
+#else
+	kfree_sensitive(op_req);
+#endif
 }
 
 static int parse_ioctl_arg(void __user *arg, unsigned int cmd,
-			   struct accel_op *op)
+			   struct accel_op_req **op_req)
 {
+	void __user *op = NULL;
+	int virtio_cmd;
+	int ret;
+
 	switch (cmd) {
 	case ACCEL_SESS_CREATE:
-		if (unlikely(copy_from_user(op, arg, sizeof(*op))))
-			return -EFAULT;
-
-		return VIRTIO_ACCEL_CMD_CREATE_SESSION;
+		op = arg;
+		virtio_cmd = VIRTIO_ACCEL_CMD_CREATE_SESSION;
+		break;
 	case ACCEL_SESS_DESTROY:
-		if (unlikely(copy_from_user(&op->session_id, arg,
-					    sizeof(op->session_id))))
-			return -EFAULT;
-
-		return VIRTIO_ACCEL_CMD_DESTROY_SESSION;
+		virtio_cmd = VIRTIO_ACCEL_CMD_DESTROY_SESSION;
+		break;
 	case ACCEL_DO_OP:
-		if (unlikely(copy_from_user(op, arg, sizeof(*op))))
-			return -EFAULT;
-
-		return VIRTIO_ACCEL_CMD_DO_OP;
+		op = arg;
+		virtio_cmd = VIRTIO_ACCEL_CMD_DO_OP;
+		break;
 	case ACCEL_GET_TIMERS:
-		if (unlikely(copy_from_user(op, arg, sizeof(*op))))
-			return -EFAULT;
-
-		return VIRTIO_ACCEL_CMD_GET_TIMERS;
+		op = arg;
+		virtio_cmd = VIRTIO_ACCEL_CMD_GET_TIMERS;
+		break;
 	default:
 		virtaccel_err("Invalid IOCTL\n");
 		return -ENOIOCTLCMD;
 	}
+
+	ret = accel_op_req_new(op_req, op);
+	if (ret)
+		return ret;
+
+	if (!op &&
+	    unlikely(get_user((*op_req)->u_op.session_id, (u64 __user *)arg)))
+		return -EFAULT;
+
+	return virtio_cmd;
 }
 
 static long accel_dev_ioctl(struct file *file, unsigned int cmd,
@@ -71,7 +119,7 @@ static long accel_dev_ioctl(struct file *file, unsigned int cmd,
 	void __user *arg = (void __user *)arg_p;
 	struct virtio_accel_file *vaccel_file = file->private_data;
 	struct virtio_accel_req *req;
-	struct accel_op *op;
+	struct accel_op_req *op_req;
 	struct virtio_accel_sess *sess = NULL;
 	u32 virtio_cmd;
 	int ret;
@@ -80,21 +128,16 @@ static long accel_dev_ioctl(struct file *file, unsigned int cmd,
 	if (!req)
 		return -ENOMEM;
 
-	op = accel_op_new();
-	if (!op) {
-		ret = -ENOMEM;
-		goto err_req;
-	}
-	req->priv = op;
-
-	ret = parse_ioctl_arg(arg, cmd, op);
+	ret = parse_ioctl_arg(arg, cmd, &op_req);
 	if (ret < 0)
 		goto err_req;
-	else
-		virtio_cmd = (u32)ret;
+
+	virtio_cmd = (u32)ret;
+	req->priv = op_req;
 
 	if (cmd == ACCEL_DO_OP) {
-		sess = virtaccel_session_get_by_id(op->session_id, req);
+		sess = virtaccel_session_get_by_id(op_req->u_op.session_id,
+						   req);
 		virtaccel_timer_start("accel > do op", sess);
 	}
 
@@ -113,10 +156,11 @@ static long accel_dev_ioctl(struct file *file, unsigned int cmd,
 
 err_req:
 	virtaccel_timer_stop("accel > do op", sess);
-	//virtaccel_timer_print_all_total(sess);
+
+	accel_op_req_delete(op_req);
+	req->priv = NULL;
 
 	virtaccel_req_delete(req);
-	kfree(op);
 	return ret;
 }
 
