@@ -10,9 +10,6 @@ virtaccel_session_create_and_add(u64 id, struct virtio_accel_req *req)
 {
 	struct virtio_accel_sess *sess = kzalloc(sizeof(*sess), GFP_KERNEL);
 
-	if (!id)
-		return NULL;
-
 	if (sess) {
 		sess->id = id;
 		sess->nr_timers = 0;
@@ -27,9 +24,6 @@ void virtaccel_session_delete(u64 id, struct virtio_accel_req *req)
 {
 	struct virtio_accel_sess *s = NULL;
 	struct virtio_accel_sess *tmp;
-
-	if (!id)
-		return;
 
 	list_for_each_entry_safe(s, tmp, &req->vaccel->sessions, node)
 	{
@@ -46,9 +40,6 @@ virtaccel_session_get_by_id(u64 id, struct virtio_accel_req *req)
 {
 	struct virtio_accel_sess *s = NULL;
 	struct virtio_accel_sess *tmp;
-
-	if (!id)
-		return NULL;
 
 	list_for_each_entry_safe(s, tmp, &req->vaccel->sessions, node)
 	{
