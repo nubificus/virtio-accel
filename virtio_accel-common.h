@@ -8,6 +8,7 @@
 #include <linux/completion.h>
 #include <linux/scatterlist.h>
 #include <linux/types.h>
+#include <linux/version.h>
 
 #ifndef fallthrough
 #if __has_attribute(__fallthrough__)
@@ -19,7 +20,10 @@
 #endif
 #endif
 
-#define PAGEOFFSET(buf) ((unsigned long)(buf) & ~PAGE_MASK)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+#define kfree_sensitive kzfree;
+#endif
+
 #define VQ_NAME_LEN 16
 
 #define VIRTQUEUE_MAX_SIZE 1024
@@ -63,16 +67,17 @@ struct virtio_accel_arg {
 	unsigned int usr_npages;
 };
 
-struct chunk_sg_allocs {
+struct virtio_accel_sg_allocs {
 	struct scatterlist **chains;
 	unsigned int count;
 };
 
 struct virtio_accel_req {
-	struct virtio_accel_hdr hdr;
 	struct virtio_accel *vaccel;
-	struct virtio_accel_arg *out_args;
-	struct virtio_accel_arg *in_args;
+
+	struct virtio_accel_hdr hdr;
+	struct virtio_accel_arg_hdr *out_arg_hdrs;
+	struct virtio_accel_arg_hdr *in_arg_hdrs;
 
 	struct scatterlist **sgs;
 	unsigned int out_sgs;
@@ -80,7 +85,7 @@ struct virtio_accel_req {
 
 	struct virtio_accel_req *parent;
 	atomic_t chunk_count;
-	struct chunk_sg_allocs chunk_allocs;
+	struct virtio_accel_sg_allocs chunk_allocs;
 
 	void *priv;
 	void __user *usr;

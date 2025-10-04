@@ -38,12 +38,10 @@ struct accel_op {
 	/* Number of in arguments */
 	__u32 in_nr;
 
-	// FIXME: use __u64 for ptrs
-
-	/* Pointer to out arguments */
+	/* Pointer to out arguments (struct accel_arg *) */
 	__u64 out;
 
-	/* Pointer to in arguments */
+	/* Pointer to in arguments (struct accel_arg *) */
 	__u64 in;
 
 	/* Operation return value */

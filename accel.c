@@ -16,10 +16,56 @@
 #include "virtio_accel-common.h"
 #include "virtio_accel-prof.h"
 
+static int get_user_args(struct accel_arg **args, struct accel_buf **arg_bufs,
+			 u64 u_addr, unsigned int nr_args, bool write)
+{
+	int ret;
+	int i;
+
+	*args = memdup_user(u64_to_user_ptr(u_addr), nr_args * sizeof(**args));
+	if (IS_ERR(*args))
+		return PTR_ERR(*args);
+
+	*arg_bufs = kcalloc(nr_args, sizeof(**arg_bufs), GFP_KERNEL);
+	if (!*arg_bufs) {
+		ret = -ENOMEM;
+		goto err_free_args;
+	}
+
+	for (i = 0; i < nr_args; i++) {
+		struct accel_arg *arg = &(*args)[i];
+		ret = accel_buf_init(&(*arg_bufs)[i], u64_to_user_ptr(arg->buf),
+				     arg->len, write);
+		if (ret)
+			goto err_free_bufs;
+	}
+	return 0;
+
+err_free_bufs:
+	while (--i)
+		accel_buf_release(&(*arg_bufs)[i], write);
+	kfree(*arg_bufs);
+err_free_args:
+	kfree(*args);
+	return ret;
+}
+
+static void free_user_args(struct accel_arg *args, struct accel_buf *arg_bufs,
+			   unsigned int nr_args, bool write)
+{
+	if (arg_bufs) {
+		for (unsigned int i = 0; i < nr_args; i++)
+			accel_buf_release(&arg_bufs[i], write);
+		kfree(arg_bufs);
+	}
+	kfree(args);
+}
+
 static int accel_op_req_new(struct accel_op_req **op_req,
 			    struct accel_op __user *op)
 {
 	struct accel_op_req *req;
+	int ret;
 
 	if (!op_req)
 		return -EINVAL;
@@ -27,9 +73,6 @@ static int accel_op_req_new(struct accel_op_req **op_req,
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
 	if (!req)
 		return -ENOMEM;
-
-	req->out = NULL;
-	req->in = NULL;
 
 	if (!op) {
 		*op_req = req;
@@ -40,23 +83,27 @@ static int accel_op_req_new(struct accel_op_req **op_req,
 		return -EFAULT;
 
 	if (req->u_op.out_nr) {
-		req->out = memdup_user(u64_to_user_ptr(req->u_op.out),
-				       req->u_op.out_nr * sizeof(*req->out));
-		if (IS_ERR(req->out))
-			return PTR_ERR(req->out);
+		ret = get_user_args(&req->out, &req->out_bufs, req->u_op.out,
+				    req->u_op.out_nr, false);
+		if (ret)
+			goto err_free;
 	}
 
 	if (req->u_op.in_nr) {
-		req->in = memdup_user(u64_to_user_ptr(req->u_op.in),
-				      req->u_op.in_nr * sizeof(*req->in));
-		if (IS_ERR(req->in)) {
-			kfree(req->out);
-			return PTR_ERR(req->in);
-		}
+		ret = get_user_args(&req->in, &req->in_bufs, req->u_op.in,
+				    req->u_op.in_nr, true);
+		if (ret)
+			goto err_free_out;
 	}
 
 	*op_req = req;
 	return 0;
+
+err_free_out:
+	free_user_args(req->out, req->out_bufs, req->u_op.out_nr, false);
+err_free:
+	kfree(req);
+	return ret;
 }
 
 static void accel_op_req_delete(struct accel_op_req *op_req)
@@ -64,8 +111,9 @@ static void accel_op_req_delete(struct accel_op_req *op_req)
 	if (!op_req)
 		return;
 
-	kfree(op_req->out);
-	kfree(op_req->in);
+	free_user_args(op_req->out, op_req->out_bufs, op_req->u_op.out_nr,
+		       false);
+	free_user_args(op_req->in, op_req->in_bufs, op_req->u_op.in_nr, true);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
 	kzfree(op_req);
