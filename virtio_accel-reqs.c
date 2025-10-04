@@ -13,130 +13,35 @@
 #include "virtio_accel-common.h"
 #include "virtio_accel-prof.h"
 
-static int virtaccel_get_user_buf(struct virtio_accel_arg *v, int write,
-				  struct virtio_device *vdev)
-{
-	int ret = 0;
-#ifdef ZC
-	struct page **m_pages;
-	struct sg_table *m_sgt;
-
-	if (!v || !v->usr_buf || !v->hdr.len || !vdev)
-		return -EINVAL;
-
-	ret = virtaccel_map_user_buf(&m_sgt, &m_pages, v->usr_buf,
-				     virtio32_to_cpu(vdev, v->hdr.len), write,
-				     vdev);
-	if (ret > 0) {
-		v->buf = m_sgt;
-		v->usr_pages = m_pages;
-		v->usr_npages = (unsigned int)ret;
-	}
-#else
-	if (!v || !v->hdr.len)
-		return -EINVAL;
-
-	v->buf = kzalloc_node(v->hdr.len, GFP_ATOMIC, dev_to_node(&vdev->dev));
-	if (!v->buf)
-		return -ENOMEM;
-#endif
-
-	return ret;
-}
-
-static void virtaccel_free_buf(struct virtio_accel_arg *v)
-{
-	if (!v->buf)
-		return;
-
-#ifdef ZC
-	virtaccel_unmap_user_buf((struct sg_table *)v->buf, v->usr_pages,
-				 v->usr_npages);
-#else
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	kzfree(v->buf);
-#else
-	kfree_sensitive(v->buf);
-#endif
-#endif
-}
-
-static int virtaccel_prepare_args(struct virtio_accel_arg **vargs,
+static int virtaccel_prepare_args(struct virtio_accel_arg_hdr **arg_hdrs,
 				  struct accel_arg *args, u32 nr_args,
 				  bool write, struct virtio_device *vdev)
 {
-	struct virtio_accel_arg *v;
-	int ret;
+	struct virtio_accel_arg_hdr *hdrs;
 	int i;
 
-	if (!vargs || (nr_args && !args) || !vdev)
+	if (!arg_hdrs || (nr_args && !args) || !vdev)
 		return -EINVAL;
 
 	if (!nr_args) {
-		*vargs = NULL;
+		*arg_hdrs = NULL;
 		return 0;
 	}
 
-	v = kzalloc_node(nr_args * sizeof(*v), GFP_ATOMIC,
-			 dev_to_node(&vdev->dev));
-	if (!v)
+	hdrs = kzalloc_node(nr_args * sizeof(*hdrs), GFP_KERNEL,
+			    dev_to_node(&vdev->dev));
+	if (!hdrs)
 		return -ENOMEM;
 
 	for (i = 0; i < nr_args; i++) {
-		v[i].hdr.len = cpu_to_virtio32(vdev, args[i].len);
-		v[i].hdr.type = cpu_to_virtio32(vdev, args[i].type);
-		v[i].hdr.custom_type_id =
+		hdrs[i].len = cpu_to_virtio32(vdev, args[i].len);
+		hdrs[i].type = cpu_to_virtio32(vdev, args[i].type);
+		hdrs[i].custom_type_id =
 			cpu_to_virtio32(vdev, args[i].custom_type_id);
-		v[i].usr_buf = u64_to_user_ptr(args[i].buf);
-		ret = virtaccel_get_user_buf(&v[i], write, vdev);
-		if (ret < 0)
-			goto free_vargs;
 	}
 
-	*vargs = v;
+	*arg_hdrs = hdrs;
 	return nr_args;
-
-free_vargs:
-	for (int j = 0; j < i; j++)
-		virtaccel_free_buf(&v[j]);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	kzfree(v);
-#else
-	kfree_sensitive(v);
-#endif
-	return ret;
-}
-
-static int virtaccel_copy_args(struct virtio_accel_arg *vargs, u32 nr_args)
-{
-#ifndef ZC
-	for (int i = 0; i < nr_args; ++i) {
-		if (!vargs[i].hdr.len || !vargs[i].buf)
-			return -EINVAL;
-
-		if (unlikely(copy_from_user(vargs[i].buf, vargs[i].usr_buf,
-					    vargs[i].hdr.len)))
-			return -EFAULT;
-	}
-#endif
-
-	return 0;
-}
-
-static void virtaccel_cleanup_args(struct virtio_accel_arg *vargs, u32 nr_args)
-{
-	if (!vargs)
-		return;
-
-	for (int i = 0; i < nr_args; ++i)
-		virtaccel_free_buf(&vargs[i]);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	kzfree(vargs);
-#else
-	kfree_sensitive(vargs);
-#endif
 }
 
 static int virtaccel_prepare_request(struct virtio_device *vdev, u32 cmd,
@@ -157,45 +62,29 @@ static int virtaccel_prepare_request(struct virtio_device *vdev, u32 cmd,
 	h->cmd = cpu_to_virtio32(vdev, cmd);
 	h->op_code = cpu_to_virtio32(vdev, u_op->op_code);
 
-	ret = virtaccel_prepare_args(&req->out_args, op_req->out, u_op->out_nr,
-				     0, vdev);
+	ret = virtaccel_prepare_args(&req->out_arg_hdrs, op_req->out,
+				     u_op->out_nr, 0, vdev);
 	if (ret < 0)
 		return ret;
 
-	total_sgs += 2 * ret;
+	total_sgs += ret + 1;
 	h->out_nr = cpu_to_virtio32(vdev, u_op->out_nr);
 
-	ret = virtaccel_copy_args(req->out_args, u_op->out_nr);
+	ret = virtaccel_prepare_args(&req->in_arg_hdrs, op_req->in, u_op->in_nr,
+				     1, vdev);
 	if (ret < 0)
 		goto free_out;
 
-	ret = virtaccel_prepare_args(&req->in_args, op_req->in, u_op->in_nr, 1,
-				     vdev);
-	if (ret < 0)
-		goto free_out;
-
-	total_sgs += 2 * ret;
+	total_sgs += ret + 1;
 	h->in_nr = cpu_to_virtio32(vdev, u_op->in_nr);
-
-	ret = virtaccel_copy_args(req->in_args, u_op->in_nr);
-	if (ret < 0)
-		goto free_in;
 
 	return total_sgs;
 
-free_in:
-	virtaccel_cleanup_args(req->in_args, u_op->in_nr);
-	h->in_nr = 0;
 free_out:
-	virtaccel_cleanup_args(req->out_args, u_op->out_nr);
+	kfree_sensitive(req->out_arg_hdrs);
 	h->out_nr = 0;
 
 	return ret;
-}
-
-static void sg_cleanup(struct scatterlist *sg)
-{
-	kfree(sg);
 }
 
 static int sg_add_vaccel_one(struct scatterlist **sgs, struct scatterlist *sg,
@@ -211,104 +100,95 @@ static int sg_add_vaccel_one(struct scatterlist **sgs, struct scatterlist *sg,
 }
 
 #ifndef ZC
+
 static int sg_add_vaccel_args(struct scatterlist **sgs,
-			      struct virtio_accel_arg *vargs, u32 nr_args,
+			      struct scatterlist *hdr_sg,
+			      struct virtio_accel_arg_hdr *arg_hdrs,
+			      struct accel_buf *arg_bufs, u32 nr_args,
 			      struct virtio_device *vdev)
 {
 	struct scatterlist *sg;
-	int i, ret, sg_idx = 0;
+	int i;
+	int ret;
 
-	if (!sgs || (nr_args && !vargs) || !vdev)
+	if (!sgs || !hdr_sg || (nr_args && (!arg_hdrs || !arg_bufs)) || !vdev)
 		return -EINVAL;
 
 	if (!nr_args)
 		return 0;
 
-	sg = kmalloc_node(2 * nr_args * sizeof(*sg), GFP_ATOMIC,
-			  dev_to_node(&vdev->dev));
+	sg = kmalloc_array_node(nr_args, sizeof(*sg), GFP_KERNEL,
+				dev_to_node(&vdev->dev));
 	if (!sg)
 		return -ENOMEM;
 
-	for (i = 0; i < nr_args; i++) {
-		ret = sg_add_vaccel_one(&sgs[sg_idx], &sg[sg_idx],
-					&vargs[i].hdr, sizeof(vargs[i].hdr));
-		if (ret < 0) {
-			virtaccel_err("Failed to add argument %d header\n", i);
-			return ret;
-		}
-		sg_idx++;
+	ret = sg_add_vaccel_one(&sgs[0], hdr_sg, arg_hdrs,
+				nr_args * sizeof(*arg_hdrs));
+	if (ret < 0) {
+		virtaccel_err("Failed to add argument headers\n");
+		return ret;
 	}
 
 	for (i = 0; i < nr_args; i++) {
-		ret = sg_add_vaccel_one(&sgs[sg_idx], &sg[sg_idx], vargs[i].buf,
-					vargs[i].hdr.len);
+		ret = sg_add_vaccel_one(&sgs[i + 1], &sg[i + 1],
+					arg_bufs[i].buf, arg_bufs[i].len);
 		if (ret < 0) {
 			virtaccel_err(
 				"Failed to add argument %d buffer (size: %u)\n",
-				i, vargs[i].hdr.len);
+				i, arg_bufs[i].len);
 			return ret;
 		}
-		sg_idx++;
 	}
 
-	return sg_idx;
+	return i + 1;
+}
+
+static void sg_cleanup_vaccel_args(struct scatterlist **sgs)
+{
+	if (!sgs)
+		return;
+
+	kfree(sgs[1]);
 }
 
 #else
 
-static int sg_add_vaccel_one_zc(struct scatterlist **sgs, void *ptr, u32 size)
-{
-	struct sg_table *sgt;
-
-	if (!sgs || !ptr || !size)
-		return -EINVAL;
-
-	sgt = (struct sg_table *)ptr;
-	*sgs = sgt->sgl;
-
-	return 1;
-}
-
 static int sg_add_vaccel_args(struct scatterlist **sgs,
-			      struct virtio_accel_arg *vargs, u32 nr_args,
+			      struct scatterlist *hdr_sg,
+			      struct virtio_accel_arg_hdr *arg_hdrs,
+			      struct accel_buf *arg_bufs, u32 nr_args,
 			      struct virtio_device *vdev)
 {
-	struct scatterlist *sg;
-	int i, ret, sg_idx = 0;
+	int i;
+	int ret;
 
-	if (!sgs || (nr_args && !vargs) || !vdev)
+	if (!sgs || !hdr_sg || (nr_args && (!arg_hdrs || !arg_bufs)) || !vdev)
 		return -EINVAL;
 
 	if (!nr_args)
 		return 0;
 
-	sg = kmalloc_node(nr_args * sizeof(*sg), GFP_ATOMIC,
-			  dev_to_node(&vdev->dev));
-	if (!sg)
-		return -ENOMEM;
-
-	for (i = 0; i < nr_args; i++) {
-		ret = sg_add_vaccel_one(&sgs[sg_idx++], &sg[i], &vargs[i].hdr,
-					sizeof(vargs[i].hdr));
-		if (ret < 0) {
-			virtaccel_err("Failed to add argument %d header\n", i);
-			return ret;
-		}
+	ret = sg_add_vaccel_one(&sgs[0], hdr_sg, arg_hdrs,
+				nr_args * sizeof(*arg_hdrs));
+	if (ret < 0) {
+		virtaccel_err("Failed to add argument headers\n");
+		return ret;
 	}
 
 	for (i = 0; i < nr_args; i++) {
-		ret = sg_add_vaccel_one_zc(&sgs[sg_idx++], vargs[i].buf,
-					   vargs[i].hdr.len);
-		if (ret < 0) {
-			virtaccel_err(
-				"Failed to add argument %d buffer (size: %u)\n",
-				i, vargs[i].hdr.len);
-			return ret;
-		}
+		printk(">> len: %u\n", arg_hdrs[i].len);
+		sgs[i + 1] = arg_bufs[i].sgt->sgl;
 	}
 
-	return sg_idx;
+	return i + 1;
 }
+
+static void sg_cleanup_vaccel_args(struct scatterlist **sgs)
+{
+	(void)sgs;
+	return;
+}
+
 #endif
 
 struct virtio_accel_req *virtaccel_req_new(struct virtio_accel *vaccel,
@@ -319,15 +199,7 @@ struct virtio_accel_req *virtaccel_req_new(struct virtio_accel *vaccel,
 		return NULL;
 
 	req->vaccel = vaccel;
-	req->out_args = NULL;
-	req->in_args = NULL;
-	req->sgs = NULL;
-
-	req->parent = NULL;
 	atomic_set(&req->chunk_count, 0);
-	req->chunk_allocs.chains = NULL;
-
-	req->priv = NULL;
 	req->usr = usr;
 
 	init_completion(&req->completion);
@@ -342,14 +214,8 @@ virtaccel_req_new_with_parent(struct virtio_accel_req *parent)
 		return NULL;
 
 	req->vaccel = parent->vaccel;
-	req->out_args = NULL;
-	req->in_args = NULL;
-	req->sgs = NULL;
-
 	req->parent = parent;
 	atomic_set(&req->chunk_count, 0);
-	req->chunk_allocs.chains = NULL;
-
 	req->priv = parent->priv;
 	req->usr = parent->usr;
 
@@ -359,19 +225,16 @@ virtaccel_req_new_with_parent(struct virtio_accel_req *parent)
 
 static void clear_parent(struct virtio_accel_req *req)
 {
-	struct virtio_accel_hdr *h;
-
-	if (!req)
+	if (!req || !req->sgs)
 		return;
 
-	h = &req->hdr;
-	if (h->out_nr)
-		sg_cleanup(req->sgs[1]);
-	if (h->in_nr)
-		sg_cleanup(req->sgs[req->out_sgs]);
+	if (req->hdr.out_nr)
+		sg_cleanup_vaccel_args(&req->sgs[1]);
+	if (req->hdr.in_nr)
+		sg_cleanup_vaccel_args(&req->sgs[req->out_sgs]);
 
-	virtaccel_cleanup_args(req->out_args, h->out_nr);
-	virtaccel_cleanup_args(req->in_args, h->in_nr);
+	kfree_sensitive(req->out_arg_hdrs);
+	kfree_sensitive(req->in_arg_hdrs);
 }
 
 static void clear_chunk(struct virtio_accel_req *req)
@@ -379,9 +242,8 @@ static void clear_chunk(struct virtio_accel_req *req)
 	if (!req)
 		return;
 
-	for (unsigned int i = 0; i < req->chunk_allocs.count; i++) {
+	for (unsigned int i = 0; i < req->chunk_allocs.count; i++)
 		kfree(req->chunk_allocs.chains[i]);
-	}
 	kfree(req->chunk_allocs.chains);
 
 	atomic_dec(&req->parent->chunk_count);
@@ -401,23 +263,10 @@ void virtaccel_req_clear(struct virtio_accel_req *req)
 		clear_chunk(req);
 	}
 
-	memset(&req->hdr, 0, sizeof(req->hdr));
-	req->out_args = NULL;
-	req->in_args = NULL;
-
 	kfree(req->sgs);
-	req->sgs = NULL;
-	req->out_sgs = 0;
-	req->in_sgs = 0;
 
-	req->parent = NULL;
 	atomic_set(&req->chunk_count, 0);
-	req->chunk_allocs.chains = NULL;
-	req->chunk_allocs.count = 0;
-
-	req->priv = NULL;
-	req->usr = NULL;
-	req->ret = 0;
+	memset(req, 0, sizeof(*req));
 }
 
 void virtaccel_req_delete(struct virtio_accel_req *req)
@@ -429,17 +278,14 @@ void virtaccel_req_delete(struct virtio_accel_req *req)
 		return;
 
 	virtaccel_req_clear(req);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-	kzfree(req);
-#else
-	kfree_sensitive(req);
-#endif
+	kfree(req);
 }
 
 int virtaccel_req_operation(struct virtio_accel_req *req, u32 cmd)
 {
 	struct scatterlist hdr_sg;
+	struct scatterlist out_hdr_sg;
+	struct scatterlist in_hdr_sg;
 	struct scatterlist status_sg;
 	struct scatterlist sid_sg;
 	struct scatterlist ret_sg;
@@ -479,14 +325,14 @@ int virtaccel_req_operation(struct virtio_accel_req *req, u32 cmd)
 		goto free_request;
 	}
 
-	/* virtio header */
+	/* header */
 	ret = sg_add_vaccel_one(&sgs[out_nsgs++], &hdr_sg, h, sizeof(*h));
 	if (ret < 0)
 		goto free_sgs;
 
 	/* user out arguments */
-	ret = sg_add_vaccel_args(&sgs[out_nsgs], req->out_args, h->out_nr,
-				 vdev);
+	ret = sg_add_vaccel_args(&sgs[out_nsgs], &out_hdr_sg, req->out_arg_hdrs,
+				 op_req->out_bufs, h->out_nr, vdev);
 	if (ret < 0) {
 		virtaccel_err("Failed to add user read arguments: %d\n", ret);
 		goto free_sgs;
@@ -495,8 +341,9 @@ int virtaccel_req_operation(struct virtio_accel_req *req, u32 cmd)
 	out_nsgs += ret;
 
 	/* user in arguments */
-	ret = sg_add_vaccel_args(&sgs[out_nsgs + in_nsgs], req->in_args,
-				 h->in_nr, vdev);
+	ret = sg_add_vaccel_args(&sgs[out_nsgs + in_nsgs], &in_hdr_sg,
+				 req->in_arg_hdrs, op_req->in_bufs, h->in_nr,
+				 vdev);
 	if (ret < 0) {
 		virtaccel_err("Failed to add user write arguments: %d\n", ret);
 		goto free_out_sg;
@@ -538,16 +385,16 @@ int virtaccel_req_operation(struct virtio_accel_req *req, u32 cmd)
 
 free_in_sg:
 	if (u_op->in_nr)
-		sg_cleanup(sgs[out_nsgs]);
+		sg_cleanup_vaccel_args(&sgs[out_nsgs]);
 free_out_sg:
 	if (u_op->out_nr)
-		sg_cleanup(sgs[1]);
+		sg_cleanup_vaccel_args(&sgs[1]);
 free_sgs:
 	kfree(sgs);
 	req->sgs = NULL;
 free_request:
-	virtaccel_cleanup_args(req->out_args, u_op->out_nr);
-	virtaccel_cleanup_args(req->in_args, u_op->in_nr);
+	kfree_sensitive(req->out_arg_hdrs);
+	kfree_sensitive(req->in_arg_hdrs);
 	h->out_nr = 0;
 	h->in_nr = 0;
 
@@ -562,6 +409,7 @@ static int virtaccel_write_user_output(struct virtio_accel_req *req)
 	struct accel_op_req *op_req = req->priv;
 	struct accel_op *u_op = &op_req->u_op;
 	int i;
+	int ret;
 
 	if (!req)
 		return -EINVAL;
@@ -571,59 +419,33 @@ static int virtaccel_write_user_output(struct virtio_accel_req *req)
 
 	for (i = 0; i < u_op->in_nr; i++) {
 		op_req->in[i].len =
-			virtio32_to_cpu(vdev, req->in_args[i].hdr.len);
+			virtio32_to_cpu(vdev, req->in_arg_hdrs[i].len);
 		op_req->in[i].type =
-			virtio32_to_cpu(vdev, req->in_args[i].hdr.type);
+			virtio32_to_cpu(vdev, req->in_arg_hdrs[i].type);
 		op_req->in[i].custom_type_id = virtio32_to_cpu(
-			vdev, req->in_args[i].hdr.custom_type_id);
+			vdev, req->in_arg_hdrs[i].custom_type_id);
 	}
 
 	if (unlikely(copy_to_user(u64_to_user_ptr(u_op->in), op_req->in,
 				  u_op->in_nr * sizeof(*op_req->in))))
 		return -EFAULT;
 
-#ifndef ZC
-	for (i = 0; i < u_op->in_nr; ++i) {
-		if (unlikely(copy_to_user(req->in_args[i].usr_buf,
-					  req->in_args[i].buf,
-					  op_req->in[i].len)))
-			return -EINVAL;
+	for (i = 0; i < u_op->in_nr; i++) {
+		ret = accel_buf_copy_to_user(&op_req->in_bufs[i]);
+		if (ret)
+			return ret;
 	}
-#endif
 
 	return 0;
 }
 
-static void *virtaccel_get_prepared_buf(struct virtio_accel_arg *varg,
-					struct virtio_device *vdev)
-{
-#ifdef ZC
-	void *b = vmap(varg->usr_pages, varg->usr_npages, VM_MAP, PAGE_KERNEL);
-	if (b)
-		return b + PAGEOFFSET((unsigned long)varg->usr_buf);
-
-	return b;
-#else
-	return varg->buf;
-#endif
-}
-
-static void virtaccel_put_prepared_buf(struct virtio_accel_arg *varg, void *buf)
-{
-#ifdef ZC
-	vunmap(buf - PAGEOFFSET((unsigned long)varg->usr_buf));
-#endif
-}
-
 static int virtaccel_handle_timers(struct virtio_accel_req *req)
 {
-	struct virtio_accel *vaccel = req->vaccel;
-	struct virtio_device *vdev = vaccel->vdev;
 	struct virtio_accel_hdr *h = &req->hdr;
 	struct accel_op_req *op_req = req->priv;
 	struct accel_prof_region *accel_timers;
 	struct accel_prof_sample **tmp_samples;
-	int ret = 0;
+	int ret;
 	int *nt;
 	int *qnt;
 	int i;
@@ -632,73 +454,52 @@ static int virtaccel_handle_timers(struct virtio_accel_req *req)
 	struct virtio_accel_sess *sess =
 		virtaccel_session_get_by_id(op_req->u_op.session_id, req);
 
-	nt = (int *)virtaccel_get_prepared_buf(&req->in_args[0], vdev);
-	if (!nt) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	nt = (int *)accel_buf_map(&op_req->in_bufs[0]);
+	if (!nt)
+		return -ENOMEM;
 
 	if (*nt == 0) {
 		*nt = sess->nr_timers;
-	} else {
-		qnt = (int *)virtaccel_get_prepared_buf(&req->in_args[1], vdev);
-		if (!qnt) {
-			ret = -ENOMEM;
-			goto out_nt;
-		}
-
-		nr_timers = (*nt) + (*qnt);
-		if (h->in_nr < 3 + nr_timers) {
-			ret = -EINVAL;
-			goto out_qnt;
-		}
-
-		accel_timers =
-			(struct accel_prof_region *)virtaccel_get_prepared_buf(
-				&req->in_args[2], vdev);
-		if (req->in_args[2].hdr.len <
-		    nr_timers * sizeof(*accel_timers)) {
-			ret = -EINVAL;
-			goto out_qnt;
-		}
-		tmp_samples =
-			kzalloc(nr_timers * sizeof(*tmp_samples), GFP_KERNEL);
-		if (!tmp_samples) {
-			ret = -ENOMEM;
-			goto out_at;
-		}
-
-		for (i = 0; i < nr_timers; i++) {
-			tmp_samples[i] = accel_timers[i].samples;
-			accel_timers[i].samples = (struct accel_prof_sample *)
-				virtaccel_get_prepared_buf(&req->in_args[3 + i],
-							   vdev);
-		}
-
-		ret = virtaccel_timers_virtio_to_accel(accel_timers, nr_timers,
-						       sess);
-		if (ret < 0)
-			goto out_tmp_samples;
-
-		for (i = 0; i < nr_timers; i++) {
-			virtaccel_put_prepared_buf(
-				&req->in_args[3 + i],
-				(void *)accel_timers[i].samples);
-			accel_timers[i].samples = tmp_samples[i];
-		}
-
-out_tmp_samples:
-		kfree(tmp_samples);
-out_at:
-		virtaccel_put_prepared_buf(&req->in_args[2],
-					   (void *)accel_timers);
-out_qnt:
-		virtaccel_put_prepared_buf(&req->in_args[1], (void *)qnt);
+		return 0;
 	}
 
-out_nt:
-	virtaccel_put_prepared_buf(&req->in_args[0], (void *)nt);
-out:
+	qnt = (int *)accel_buf_map(&op_req->in_bufs[1]);
+	if (!qnt)
+		return -ENOMEM;
+
+	nr_timers = (*nt) + (*qnt);
+	if (h->in_nr < 3 + nr_timers)
+		return -EINVAL;
+
+	accel_timers =
+		(struct accel_prof_region *)accel_buf_map(&op_req->in_bufs[2]);
+	if (!accel_timers)
+		return -ENOMEM;
+
+	if (req->in_arg_hdrs[2].len < nr_timers * sizeof(*accel_timers))
+		return -EINVAL;
+
+	tmp_samples =
+		kmalloc_array(nr_timers, sizeof(*tmp_samples), GFP_KERNEL);
+	if (!tmp_samples)
+		return -ENOMEM;
+
+	for (i = 0; i < nr_timers; i++) {
+		tmp_samples[i] = accel_timers[i].samples;
+		accel_timers[i].samples =
+			(struct accel_prof_sample *)accel_buf_map(
+				&op_req->in_bufs[3 + i]);
+		if (!accel_timers[i].samples)
+			goto free_samples;
+	}
+
+	ret = virtaccel_timers_virtio_to_accel(accel_timers, nr_timers, sess);
+
+free_samples:
+	while (i--)
+		accel_timers[i].samples = tmp_samples[i];
+
+	kfree(tmp_samples);
 	return ret;
 }
 
@@ -842,7 +643,7 @@ static unsigned int collect_chunk_sgs(
 	unsigned int sg_offset, unsigned int chunk_sg_total_count,
 	unsigned int chunk_sg_count, struct scatterlist **chunk_sgs,
 	unsigned int *chunk_sg_col_total_count, unsigned int *chunk_out_sgs,
-	unsigned int *chunk_in_sgs, struct chunk_sg_allocs *chunk_allocs)
+	unsigned int *chunk_in_sgs, struct virtio_accel_sg_allocs *chunk_allocs)
 {
 	unsigned int curr_sg_idx = 0;
 	unsigned int chunk_sg_idx = 0;
@@ -851,7 +652,8 @@ static unsigned int collect_chunk_sgs(
 	unsigned int collect_in_sgs = 0;
 	unsigned int sg_count = out_sgs + in_sgs;
 	unsigned int ent_idx;
-	struct chunk_sg_allocs *allocs = chunk_allocs ? chunk_allocs : NULL;
+	struct virtio_accel_sg_allocs *allocs = chunk_allocs ? chunk_allocs :
+							       NULL;
 	bool count_only = (chunk_sgs == NULL);
 
 	if (!count_only && allocs) {
@@ -964,7 +766,6 @@ free_allocs:
 		kfree(allocs->chains[i]);
 
 	kfree(allocs->chains);
-
 	return 0;
 }
 

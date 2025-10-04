@@ -32,9 +32,9 @@ virtio_accel-y := \
 	virtio_accel-core.o \
 	virtio_accel-mgr.o \
 	virtio_accel-reqs.o \
-	virtio_accel-zc.o \
 	virtio_accel-sess.o \
 	virtio_accel-prof.o \
+	accel_buf.o \
 	accel.o
 
 .PHONY: all
