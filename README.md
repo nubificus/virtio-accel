@@ -6,7 +6,7 @@ to vSock for [vAccel](https://github.com/nubificus/vaccel) VM execution.
 
 Following the split-driver VirtIO model, the transport functionality is
 implemented in two parts: a) this kernel module, and b) a
-[QEMU](https://github.com/cloudkernels/qemu-vaccel) driver
+[QEMU](https://github.com/nubificus/qemu-vaccel) driver
 <!-- TODO: Add firecracker info -->
 
 ## Prebuilt artifacts
@@ -33,7 +33,7 @@ Debian-based distro you can use:
 sudo apt install linux-headers-$(uname -r)
 ```
 
-Get the plugin:
+Get the source code:
 ```bash
 git clone https://github.com/nubificus/virtio-accel
 cd virtio-accel
@@ -75,7 +75,7 @@ build.
 
 To fetch and build QEMU:
 ```bash
-git clone https://github.com/cloudkernels/qemu-vaccel
+git clone https://github.com/nubificus/qemu-vaccel
 mkdir qemu-vaccel/build
 cd qemu-vaccel/build
 ../configure --target-list=${ARCH}-softmmu --enable-virtfs && \
