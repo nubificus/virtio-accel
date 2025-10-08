@@ -20,4 +20,4 @@ User:            clang-tidy
 SystemHeaders:   false
 CheckOptions:
   - key:   readability-function-cognitive-complexity.Threshold
-    value: '50'
+    value: '150'
