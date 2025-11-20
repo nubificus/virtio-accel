@@ -189,6 +189,20 @@ void virtio_accel_buffer_unmap(struct virtio_accel_buffer *v_buf)
 	}
 }
 
+void *virtio_accel_buffer_get_mapped(struct virtio_accel_buffer *v_buf)
+{
+	if (!v_buf || !v_buf->len)
+		return NULL;
+
+	if (!v_buf->pinned)
+		return v_buf->buf;
+
+	if (v_buf->v_addr)
+		return v_buf->v_addr + v_buf->offset;
+
+	return NULL;
+}
+
 int virtio_accel_buffer_copy_to_user(struct virtio_accel_buffer *v_buf)
 {
 	if (!v_buf || !v_buf->len)

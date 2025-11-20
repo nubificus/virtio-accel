@@ -13,6 +13,7 @@
 #include <linux/types.h>
 
 #include "profiler.h"
+#include "buffer.h"
 #include "common.h"
 #include "session.h"
 #include <linux/virtio_accel.h>
@@ -294,9 +295,9 @@ void virtio_accel_profiler_timers_print_all_total(
 }
 
 static unsigned int
-get_region_samples(struct virtio_accel_profiler_sample *reg_samples,
-		   unsigned int nr_reg_samples,
-		   struct virtio_accel_timer *timer)
+get_region_samples(struct virtio_accel_timer *timer,
+		   struct virtio_accel_profiler_sample *samples,
+		   unsigned int nr_samples)
 {
 #ifdef PROFILING
 	struct virtio_accel_timer_sample *sample = NULL, *tmp;
@@ -304,15 +305,15 @@ get_region_samples(struct virtio_accel_profiler_sample *reg_samples,
 
 	list_for_each_entry_safe(sample, tmp, &timer->samples, node)
 	{
-		if (i == nr_reg_samples) {
+		if (i == nr_samples) {
 			vacl_warn(
-				"Not all virtio-accel samples for %s can be returned (allocated: %u vs total: %u)",
-				timer->name, nr_reg_samples, timer->nr_samples);
+				"Not all samples for %s can be returned (allocated: %u vs total: %u)",
+				timer->name, nr_samples, timer->nr_samples);
 			break;
 		}
 
-		reg_samples[i].start = ktime_to_ns(sample->start);
-		reg_samples[i].time = ktime_to_ns(sample->time);
+		samples[i].start = ktime_to_ns(sample->start);
+		samples[i].time = ktime_to_ns(sample->time);
 		i++;
 	}
 
@@ -326,6 +327,7 @@ get_region_samples(struct virtio_accel_profiler_sample *reg_samples,
 unsigned int
 virtio_accel_profiler_get_regions(struct virtio_accel_session *sess,
 				  struct virtio_accel_profiler_region *regions,
+				  struct virtio_accel_buffer *samples_bufs,
 				  unsigned int nr_regions)
 {
 #ifdef PROFILING
@@ -336,22 +338,30 @@ virtio_accel_profiler_get_regions(struct virtio_accel_session *sess,
 	if (!profiling)
 		return 0;
 
-	if (nr_regions < 1)
+	if (!nr_regions)
 		return 0;
 
 	hash_for_each(sess->timers, bkt, timer, node)
 	{
 		if (i == nr_regions) {
 			vacl_warn(
-				"Not all virtio-accel timers can be returned (allocated: %u vs total: %u)",
+				"Not all timers can be returned (allocated: %u vs total: %u)",
 				nr_regions, sess->nr_timers);
 			break;
 		}
 
 		snprintf(regions[i].name, VIRTIO_ACCEL_TIMERS_NAME_MAX, "%s %s",
 			 TIMERS_NAME_PREFIX, timer->name);
-		regions[i].nr_entries = get_region_samples(
-			regions[i].samples, regions[i].size, timer);
+
+		struct virtio_accel_profiler_sample *samples =
+			(struct virtio_accel_profiler_sample *)
+				virtio_accel_buffer_get_mapped(
+					&samples_bufs[i]);
+		if (!samples)
+			break;
+
+		regions[i].nr_samples = get_region_samples(
+			timer, samples, regions[i].max_samples);
 		i++;
 	}
 

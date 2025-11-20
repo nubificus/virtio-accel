@@ -5,6 +5,7 @@
 
 #include <linux/types.h>
 
+#include "core.h"
 #include "request.h"
 
 struct virtio_accel_session {
@@ -18,9 +19,9 @@ struct virtio_accel_session {
 };
 
 struct virtio_accel_session *
-virtio_accel_session_create_and_add(u64 id, struct virtio_accel_request *req);
-void virtio_accel_session_delete(u64 id, struct virtio_accel_request *req);
+virtio_accel_session_create_and_add(struct virtio_accel *vacl, u64 id);
+void virtio_accel_session_delete(struct virtio_accel *vacl, u64 id);
 struct virtio_accel_session *
-virtio_accel_session_get_by_id(u64 id, struct virtio_accel_request *req);
+virtio_accel_session_get_by_id(struct virtio_accel *vacl, u64 id);
 
 #endif /* _VIRTIO_ACCEL_SESSION_H */
