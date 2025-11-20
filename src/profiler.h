@@ -7,6 +7,7 @@
 #include <linux/ktime.h>
 #include <linux/types.h>
 
+#include "buffer.h"
 #include "session.h"
 #include <linux/virtio_accel.h>
 
@@ -50,6 +51,7 @@ void virtio_accel_profiler_timers_print_all_total(
 unsigned int
 virtio_accel_profiler_get_regions(struct virtio_accel_session *sess,
 				  struct virtio_accel_profiler_region *regions,
+				  struct virtio_accel_buffer *samples_bufs,
 				  unsigned int nr_regions);
 
 #endif /* _VIRTIO_ACCEL_PROFILER_H */

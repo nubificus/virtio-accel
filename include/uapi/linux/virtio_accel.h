@@ -11,7 +11,7 @@
 #define VIRTIO_ACCEL_CREATE_SESSION _IOWR('@', 0, struct virtio_accel_op)
 #define VIRTIO_ACCEL_DESTROY_SESSION _IOWR('@', 1, __u64)
 #define VIRTIO_ACCEL_DO_OP _IOWR('@', 2, struct virtio_accel_op)
-#define VIRTIO_ACCEL_GET_TIMERS _IOWR('@', 3, struct virtio_accel_op)
+#define VIRTIO_ACCEL_GET_TIMERS _IOWR('@', 3, struct virtio_accel_profiler_op)
 
 struct virtio_accel_arg {
 	__u64 buf;
@@ -27,17 +27,39 @@ struct virtio_accel_op {
 	/* User-defined operation code */
 	__u32 op_code;
 
+	__u32 padding;
+
 	/* Number of out arguments */
 	__u32 nr_out;
 
 	/* Number of in arguments */
 	__u32 nr_in;
 
-	/* Pointer to out arguments (struct virtio_accel_arg *) */
+	/* Pointer to out arguments
+	 * (struct virtio_accel_arg *) */
 	__u64 out;
 
-	/* Pointer to in arguments (struct virtio_accel_arg *) */
+	/* Pointer to in arguments
+	 * (struct virtio_accel_arg *) */
 	__u64 in;
+
+	/* Operation return value */
+	__u32 ret;
+};
+
+struct virtio_accel_profiler_op {
+	/* Session id */
+	__u64 session_id;
+
+	/* Max number of allocated regions */
+	__u32 max_regions;
+
+	/* Number of collected regions */
+	__u32 nr_regions;
+
+	/* Array of collected regions
+	 * (struct virtio_accel_profiler_region *) */
+	__u64 regions;
 
 	/* Operation return value */
 	__u32 ret;
@@ -57,14 +79,15 @@ struct virtio_accel_profiler_region {
 	/* Name of the region */
 	char name[VIRTIO_ACCEL_TIMERS_NAME_MAX];
 
+	/* Max number of allocated samples */
+	__u32 max_samples;
+
 	/* Number of collected samples */
-	__u64 nr_entries;
+	__u32 nr_samples;
 
-	/* Array of collected samples */
-	struct virtio_accel_profiler_sample *samples;
-
-	/* Allocated size for the array */
-	__u64 size;
+	/* Array of collected samples
+	 * (struct virtio_accel_profiler_sample *) */
+	__u64 samples;
 };
 
 /* status */
@@ -80,6 +103,17 @@ struct virtio_accel_arg_header {
 	__virtio32 custom_type_id;
 };
 
+struct virtio_accel_profiler_region_hdr {
+	char name[VIRTIO_ACCEL_TIMERS_NAME_MAX];
+	__virtio32 max_samples;
+	__virtio32 nr_samples;
+};
+
+struct virtio_accel_profiler_sample_hdr {
+	__virtio64 start;
+	__virtio64 time;
+};
+
 struct virtio_accel_header {
 	__virtio64 request_id;
 	__virtio64 session_id;
@@ -90,10 +124,18 @@ struct virtio_accel_header {
 #define VIRTIO_ACCEL_CMD_GET_TIMERS 3
 #define VIRTIO_ACCEL_CMD_MAX 4
 	__virtio32 cmd;
-	__virtio32 op_code;
+	union {
+		struct {
+			__virtio32 op_code;
+			__virtio32 nr_out;
+			__virtio32 nr_in;
+		} op;
 
-	__virtio32 nr_out;
-	__virtio32 nr_in;
+		struct {
+			__virtio32 max_regions;
+			__virtio64 padding;
+		} profiler_op;
+	};
 
 	__virtio32 total_chunks;
 };

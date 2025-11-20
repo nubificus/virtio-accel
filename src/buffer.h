@@ -29,6 +29,7 @@ void virtio_accel_buffer_release(struct virtio_accel_buffer *v_buf, bool write);
 
 void *virtio_accel_buffer_map(struct virtio_accel_buffer *v_buf);
 void virtio_accel_buffer_unmap(struct virtio_accel_buffer *v_buf);
+void *virtio_accel_buffer_get_mapped(struct virtio_accel_buffer *v_buf);
 int virtio_accel_buffer_copy_to_user(struct virtio_accel_buffer *v_buf);
 
 #endif /* _VIRTIO_ACCEL_BUFFER_H */
