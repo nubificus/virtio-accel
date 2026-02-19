@@ -3,10 +3,11 @@ name: Add Git Trailers to PR commits
 on:
   pull_request_review:
     types: [submitted]
+  pull_request:
+    types: [synchronize, labeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 jobs:
 #  commit-coverage:
@@ -17,9 +18,22 @@ jobs:
 #      commit: true
 #    secrets: inherit
 
-  git-trailers:
-#    needs: [commit-coverage]
+  check-pr-status:
+#    needs: commit-coverage
+    name: Check PR status
+    if: ${{ always() && github.event.pull_request.base.ref == 'main' }}
+    uses: nubificus/vaccel/.github/workflows/check-pr-status.yml@main
+    with:
+      pr-number: >-
+        ${{ github.event.pull_request_review.pull_request.number ||
+          github.event.pull_request.number }}
+    secrets: inherit
+
+  add-git-trailers:
+    needs: check-pr-status
     name: Add Git Trailers to PR commits
-    if: ${{ github.event.pull_request.base.ref == 'main' && github.event.review.state == 'approved' }}
+    if: >-
+      ${{ always() && github.event.pull_request.base.ref == 'main' &&
+        needs.check-pr-status.outputs.is-approved == 'true' }}
     uses: nubificus/vaccel/.github/workflows/add-git-trailers.yml@main
     secrets: inherit

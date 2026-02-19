@@ -12,9 +12,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-pr-status:
+    name: Check PR status
+    uses: nubificus/vaccel/.github/workflows/check-pr-status.yml@main
+    secrets: inherit
+
 #  test-build:
+#    needs: check-pr-status
 #    name: Test Build
-#    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+#    if: ${{ needs.check-pr-status.outputs.expects-checks == 'true' }}
 #    uses: nubificus/vaccel/.github/workflows/test-build.yml@main
 #    with:
 #      options: ''
@@ -22,8 +28,9 @@ jobs:
 #    secrets: inherit
 
   verify-build:
+    needs: check-pr-status
     name: Verify Build
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+    if: ${{ needs.check-pr-status.outputs.expects-checks == 'true' }}
     uses: ./.github/workflows/verify-build.yml
     with:
       runner-archs: '["amd64", "arm64"]'
@@ -36,21 +43,28 @@ jobs:
     secrets: inherit
 
   validate-files-and-commits:
+    needs: check-pr-status
     name: Validate Files and Commits
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+    if: ${{ needs.check-pr-status.outputs.expects-checks == 'true' }}
     uses: nubificus/vaccel/.github/workflows/validate-files-and-commits.yml@main
     secrets: inherit
 
   validate-code:
+    needs: check-pr-status
     name: Validate Code
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-test') }}
+    if: ${{ needs.check-pr-status.outputs.expects-checks == 'true' }}
     uses: nubificus/vaccel/.github/workflows/validate-code.yml@main
     with:
       skip-cppcheck: true
     secrets: inherit
 
 #  generate-coverage:
-#    needs: [test-build, verify-build, validate-files-and-commits, validate-code]
+#    needs:
+#      - check-pr-status
+#      - test-build
+#      - verify-build
+#      - validate-files-and-commits
+#      - validate-code
 #    name: Generate Coverage Report
 #    uses: ./.github/workflows/coverage-report.yml
 #    with:
@@ -58,8 +72,18 @@ jobs:
 
   # Dummy job for setting required checks
   jobs-completed:
-    needs: [verify-build, validate-files-and-commits, validate-code]
+    needs:
+      - check-pr-status
+      - verify-build
+      - validate-files-and-commits
+      - validate-code
     name: Jobs Completed
-    runs-on: [base-2204-amd64]
+    if: >-
+      ${{ always() &&
+        (needs.check-pr-status.outputs.is-approved == 'true' ||
+          (needs.check-pr-status.outputs.expects-checks == 'true' &&
+            !contains(needs.*.result, 'failure') &&
+            !contains(needs.*.result, 'cancelled'))) }}
+    runs-on: base-2204-amd64
     steps:
       - run: exit 0
