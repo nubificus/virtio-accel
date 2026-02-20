@@ -22,3 +22,13 @@ jobs:
       options: ''
       upload-subpath: 'virtio-accel'
     secrets: inherit
+
+  update-release:
+    needs: build-dist
+    name: Update Release
+    if: always()
+    uses: nubificus/vaccel/.github/workflows/update-release.yml@main
+    with:
+      artifacts-path: 'virtio-accel'
+      result: ${{ needs.build-dist.result }}
+    secrets: inherit
