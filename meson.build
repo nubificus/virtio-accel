@@ -2,8 +2,9 @@ project('virtio-accel', 'c',
   meson_version : '>=1.1',
   default_options : ['prefix=/'],
   version : run_command('sh', '-c',
-    'git submodule update --init >/dev/null && ' +
-    'scripts/common/generate-version.sh .',
+    '(git submodule update --init >/dev/null 2>&1 || true) && ' +
+    'scripts/common/generate-version.sh',
+    env: {'SH_SCRIPTS_DIR': meson.project_source_root() / 'scripts' / 'common'},
     check: true).stdout().strip())
 
 opt_kdir = get_option('kdir')
@@ -28,7 +29,7 @@ if opt_kdir != 'default'
 endif
 
 make_bin = find_program('make')
-make_sh = files(meson.project_source_root() + '/scripts/make.sh')
+make_sh = meson.project_source_root() / 'scripts' / 'make.sh'
 build_dir_src = meson.current_build_dir() / 'src'
 build_dir_virtio_accel = build_dir_src / 'virtio_accel.ko.p'
 
@@ -70,38 +71,49 @@ virtio_accel_dep = declare_dependency(
   sources: virtio_accel)
 
 if not meson.is_subproject()
+  env_vars_list = []
+  foreach key, value : env_vars + {'BUILD_DIR': build_dir_virtio_accel }
+    env_vars_list += key + '=' + value + ' '
+  endforeach
+
   meson.add_install_script(make_sh, make_bin,
     meson.current_source_dir(), build_dir_src, 'virtio_accel.ko',
     'modules_install',
-    'BUILD_DIR=' + build_dir_virtio_accel,
+    env_vars_list,
     skip_if_destdir : true)
-
-  meson.add_dist_script(
-    'scripts/dist.sh',
-    'virtio-accel',
-    get_option('buildtype'),
-    'DEBUG',
-    debug,
-    'PROFILING',
-    opt_profiling.to_int().to_string(),
-    )
 endif
+
+version_only = meson.is_subproject() ? '--version-only' : ''
+meson.add_dist_script(
+  'scripts/dist.sh',
+  '-n', meson.project_name(),
+  '-v', meson.project_version(),
+  '-t', get_option('buildtype'),
+  '-a', 'profiling=' + opt_profiling.to_string(),
+  '--pkg-config-path', ':'.join(get_option('pkg_config_path')),
+  version_only)
 
 # helper vars for parent projects
 version = meson.project_version()
 
+pkg_arch = run_command('sh', '-c',
+  '. scripts/common/sh-common.sh; sh_print_arch',
+  check: true).stdout().strip()
+pkg_base_name = meson.project_name() + '_' + version + '_' + pkg_arch
+
 gen_vm_artifacts = custom_target('gen-vm-artifacts',
   command : ['scripts/gen-vm-artifacts.sh',
-    meson.project_source_root(),
-    meson.project_build_root(),
-    'DEBUG=' + debug + ' PROFILING=' + opt_profiling.to_int().to_string(),
-    meson.project_name(),
-    meson.project_version()],
+    '-n', meson.project_name(),
+    '-v', meson.project_version(),
+    '-t', get_option('buildtype'),
+    '-a', 'profiling=' + opt_profiling.to_string(),
+    '-s', meson.project_source_root(),
+    '-d', meson.project_build_root()],
   output : [
-    meson.project_name() + '-' + meson.project_version() + '-bin.tar.xz',
-    meson.project_name() + '-' + meson.project_version() + '-fc-bin.tar.xz',
-    meson.project_name() + '-' + meson.project_version() + '-linux-image.tar.xz',
-    meson.project_name() + '-' + meson.project_version() + '-fc-linux-image.tar.xz'],
+    pkg_base_name + '.tar.xz',
+    pkg_base_name + '_fc.tar.xz',
+    pkg_base_name + '_linux-image.tar.xz',
+    pkg_base_name + '_fc-linux-image.tar.xz'],
   console : true,
   build_by_default : false,
   install : false)
