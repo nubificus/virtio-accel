@@ -9,12 +9,17 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install prerequisites
 WORKDIR /
-# hadolint ignore=DL3008
+ENV VENV=/.venv
+ENV PATH="$VENV/bin:$PATH"
+# hadolint ignore=DL3008,DL3013
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential gcc g++ ca-certificates wget git bison flex bc \
-        libelf-dev libssl-dev cpio pahole kmod && \
+        libelf-dev libssl-dev cpio pahole kmod \
+        ninja-build pkg-config python3-pip python3-venv && \
     apt-get clean && \
+    python3 -m venv $VENV && \
+    pip install --no-cache-dir meson && \
     rm -rf /var/cache/apt /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Get linux source
@@ -52,12 +57,14 @@ RUN make olddefconfig && \
 WORKDIR /install/linux
 ARG PKG_NAME=virtio-accel
 ARG PKG_VERSION=0.0.0
+ARG PKG_ARCH="$TARGETARCH"
 RUN version=$(cat /linux/include/config/kernel.release) && \
     cp /linux/.config "linux-${version}-${TARGETARCH}-fc.config" && \
     find /linux \( -name 'vmlinux' -o -name '*Image' \) -exec \
         sh -c 'cp "$1" "$(basename "$1")-$2-$3-fc"' \
             sh {} "${version}" "${TARGETARCH}" \; && \
-    tar -pcJf "/install/${PKG_NAME}-${PKG_VERSION}-fc-linux-image.tar.xz" ./*
+    tar -pcJf \
+        "/install/${PKG_NAME}_${PKG_VERSION}_${PKG_ARCH}_fc-linux-image.tar.xz" ./*
 
 # build and pack virtio-accel
 WORKDIR /virtio-accel
@@ -65,13 +72,16 @@ ARG VIRTIO_ACCEL_SRC=.
 ARG BUILD_ARGS
 RUN --mount=type=bind,rw,target=/virtio-accel,source="${VIRTIO_ACCEL_SRC}" \
     build_dir="$(pwd)/build_$(od -vN 4 -An -tx1 /dev/urandom | tr -d " \n" ; echo)" && \
-    eval make modules modules_install \
-        KDIR=/linux \
-        BUILD_DIR="${build_dir}" \
-        INSTALL_MOD_PATH=/install/modules \
-        "${BUILD_ARGS}" && \
+    eval meson setup \
+        --prefix /install/modules \
+        -Dkdir=/linux \
+        "${BUILD_ARGS}" \
+        "${build_dir}" && \
+    meson compile -C "${build_dir}" && \
+    meson install -C "${build_dir}" && \
     tar --acls --xattrs --numeric-owner \
-        -JpScf "/install/${PKG_NAME}-${PKG_VERSION}-fc-bin.tar.xz" \
+        -JpScf \
+        "/install/${PKG_NAME}_${PKG_VERSION}_${PKG_ARCH}_fc.tar.xz" \
         -C /install/modules .
 
 # Generate generic artifacts
@@ -94,12 +104,14 @@ RUN cat generic.config >> .config && \
 WORKDIR /install/linux
 ARG PKG_NAME=virtio-accel
 ARG PKG_VERSION=0.0.0
+ARG PKG_ARCH="$TARGETARCH"
 RUN version=$(cat /linux/include/config/kernel.release) && \
     cp /linux/.config "linux-${version}-${TARGETARCH}.config" && \
     find /linux -name '*Image' -exec \
         sh -c 'cp "$1" "$(basename "$1")-$2-$3"' \
             sh {} "${version}" "${TARGETARCH}" \; && \
-    tar -pcJf "/install/${PKG_NAME}-${PKG_VERSION}-linux-image.tar.xz" ./*
+    tar -pcJf \
+        "/install/${PKG_NAME}_${PKG_VERSION}_${PKG_ARCH}_linux-image.tar.xz" ./*
 
 # build and pack virtio-accel
 WORKDIR /virtio-accel
@@ -107,13 +119,15 @@ ARG VIRTIO_ACCEL_SRC=.
 ARG BUILD_ARGS
 RUN --mount=type=bind,rw,target=/virtio-accel,source="${VIRTIO_ACCEL_SRC}" \
     build_dir="$(pwd)/build_$(od -vN 4 -An -tx1 /dev/urandom | tr -d " \n" ; echo)" && \
-    eval make modules modules_install \
-        KDIR=/linux \
-        BUILD_DIR="${build_dir}" \
-        INSTALL_MOD_PATH=/install/modules \
-        "${BUILD_ARGS}" && \
+    eval meson setup \
+        --prefix /install/modules \
+        -Dkdir=/linux \
+        "${BUILD_ARGS}" \
+        "${build_dir}" && \
+    meson compile -C "${build_dir}" && \
+    meson install -C "${build_dir}" && \
     tar --acls --xattrs --numeric-owner \
-        -JpScf "/install/${PKG_NAME}-${PKG_VERSION}-bin.tar.xz" \
+        -JpScf "/install/${PKG_NAME}_${PKG_VERSION}_${PKG_ARCH}.tar.xz" \
         -C /install/modules .
 
 # Copy artifacts to host

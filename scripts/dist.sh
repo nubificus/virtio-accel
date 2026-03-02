@@ -1,43 +1,39 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 
-# generate .version file
-SCRIPTS_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null && pwd -P)
-cd "${MESON_SOURCE_ROOT}" || exit 1
-PKG_VERSION="$(sh "${SCRIPTS_DIR}"/common/generate-version.sh "" --no-dirty)"
-echo "${PKG_VERSION}" >"${MESON_DIST_ROOT}/.version"
+set -e
 
-# parse script args
-PKG_NAME=$1
-shift $(($# > 0 ? 1 : 0))
-BUILD_TYPE=$1
-shift $(($# > 0 ? 1 : 0))
-REPO_URL=$(git remote get-url origin |
-	sed 's/git@github.com:\(.*\)\.git/https:\/\/github.com\/\1/g')
+SCRIPTS_DIR="$(cd -- "$(dirname -- "$0")" >/dev/null && pwd -P)"
+SH_SCRIPTS_DIR="${SCRIPTS_DIR}/common"
+# shellcheck source=scripts/common/dist-common.sh
+. "${SH_SCRIPTS_DIR}/dist-common.sh"
 
-build_args=""
-c=$((0))
-for v in "$@"; do
-	[ -z "$v" ] && continue
+main() {
+	parse_args "$@"
 
-	if [ $((c % 2)) -eq 0 ]; then
-		build_args="${build_args}$v="
-	else
-		build_args="${build_args}$v "
+	printf 'Package    : %s\n' "$DIST_PKG_NAME"
+	printf 'Version    : %s\n' "$DIST_PKG_VERSION"
+	printf 'Repo URL   : %s\n' "$DIST_REPO_URL"
+	printf 'Build type : %s\n' "$DIST_BUILD_TYPE"
+	printf 'Meson args : %s\n\n' "$DIST_BUILD_ARGS"
+
+	printf 'Generating version file\n'
+	generate_version_file
+
+	if [ "$DIST_VERSION_ONLY" -eq 1 ]; then
+		return
 	fi
-	c=$((c + 1))
-done
 
-printf "Package    : %s\n" "${PKG_NAME}"
-printf "Version    : %s\n" "${PKG_VERSION}"
-printf "Build type : %s\n" "${BUILD_TYPE}"
-printf "Repo URL   : %s\n" "${REPO_URL}"
-printf "Build args : %s\n\n" "${build_args}"
+	cd "$MESON_DIST_ROOT" || sh_error "Could not change to ${MESON_DIST_ROOT}"
 
-cd "${MESON_DIST_ROOT}" || exit 1
+	printf 'Generating binary distribution\n\n'
+	"$SCRIPTS_DIR"/gen-vm-artifacts.sh \
+		-n "$DIST_PKG_NAME" \
+		-v "$DIST_PKG_VERSION" \
+		-t "$DIST_BUILD_TYPE" \
+		--raw-build-args "$DIST_BUILD_ARGS" \
+		-s "$MESON_SOURCE_ROOT" \
+		-d "$(dirname "$MESON_DIST_ROOT")"
+}
 
-# generate binary dist
-printf "%s\n\n" 'Generating binary distribution'
-"${SCRIPTS_DIR}"/gen-vm-artifacts.sh \
-	"${MESON_SOURCE_ROOT}" "$(dirname "${MESON_DIST_ROOT}")" \
-	"${build_args}" "${PKG_NAME}" "${PKG_VERSION}"
+main "$@"

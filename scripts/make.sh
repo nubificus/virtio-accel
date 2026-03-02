@@ -10,7 +10,7 @@ OUTPUT=$4
 shift 4
 
 for a in "$@"; do
-	[ "$a" = "modules_install" ] && INSTALL=1 && break
+	[ "$a" = "modules_install" ] && install=1 && break
 done
 
 [ "${OUTPUT_DIR}" = "${SRC_DIR}" ] && return
@@ -21,6 +21,6 @@ fi
 
 "${MAKE_BIN}" -C "${SRC_DIR}" "$@"
 
-if [ -z "$INSTALL" ]; then
+if [ -z "$install" ]; then
 	cp "${BUILD_DIR}"/"${OUTPUT}" "${OUTPUT_DIR}"/"${OUTPUT}"
 fi
