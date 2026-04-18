@@ -7,12 +7,15 @@ on:
     types: [synchronize, labeled]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+
+permissions: read-all
 
 jobs:
 #  commit-coverage:
 #    name: Commit coverage report
-#    if: ${{ github.event.review.state == 'approved' }}
+#    if: github.event.review.state == 'approved'
 #    uses: ./.github/workflows/coverage-report.yml
 #    with:
 #      commit: true
@@ -21,7 +24,7 @@ jobs:
   check-pr-status:
 #    needs: commit-coverage
     name: Check PR status
-    if: ${{ always() && github.event.pull_request.base.ref == 'main' }}
+    if: always() && github.event.pull_request.base.ref == 'main'
     uses: nubificus/vaccel/.github/workflows/check-pr-status.yml@main
     with:
       pr-number: >-
@@ -33,7 +36,8 @@ jobs:
     needs: check-pr-status
     name: Add Git Trailers to PR commits
     if: >-
-      ${{ always() && github.event.pull_request.base.ref == 'main' &&
-        needs.check-pr-status.outputs.is-approved == 'true' }}
+      always() &&
+      github.event.pull_request.base.ref == 'main' &&
+      needs.check-pr-status.outputs.is-approved == 'true'
     uses: nubificus/vaccel/.github/workflows/add-git-trailers.yml@main
     secrets: inherit

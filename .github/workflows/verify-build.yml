@@ -6,7 +6,7 @@ on:
       actions-repo:
         type: string
         default: 'nubificus/vaccel'
-      actions-rev:
+      actions-ref:
         type: string
         default: 'main'
       runner:
@@ -50,10 +50,18 @@ on:
       AWS_SECRET_ACCESS_KEY:
         required: false
 
+permissions: read-all
+
+env:
+  DEFAULT_UPPATH: >-
+    ${{ inputs.package != 'vaccel' &&
+      format('{0}/{1}', 'plugins', inputs.package) || '' }}
+
 jobs:
   verify-build:
     name: Verify Build
-    runs-on: ${{ format('{0}-{1}', join(fromJSON(inputs.runner), '-'), matrix.arch) }}
+    runs-on: >-
+      ${{ format('{0}-{1}', join(fromJSON(inputs.runner), '-'), matrix.arch) }}
     strategy:
       matrix:
         arch: ["${{ fromJSON(inputs.runner-archs) }}"]
@@ -61,8 +69,9 @@ jobs:
       fail-fast: false
     env:
       ARCH: ${{ fromJson(inputs.runner-arch-map)[0][matrix.arch] }}
-      DEFAULT_UPPATH: ${{ (inputs.package != 'vaccel') && format('{0}/{1}', 'plugins', inputs.package) || '' }}
-      INSTALL_PREFIX: ${{github.workspace}}/artifacts/${{fromJson(inputs.runner-arch-map)[0][matrix.arch]}}/${{matrix.build-type}}
+      INSTALL_PREFIX: >-
+        ${{ format('{0}/artifacts/{1}/{2}', github.workspace,
+          fromJson(inputs.runner-arch-map)[0][matrix.arch], matrix.build-type) }}
     steps:
       - name: Parse repository names
         id: parse-repos
@@ -88,11 +97,11 @@ jobs:
           permission-contents: read
 
       - name: Checkout .github directory
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: .github
           repository: ${{ inputs.actions-repo }}
-          ref: ${{ inputs.actions-rev }}
+          ref: ${{ inputs.actions-ref }}
           token: ${{ steps.generate-token.outputs.token || github.token }}
 
       - name: Get revision info
@@ -109,12 +118,14 @@ jobs:
 
       - name: Set up Docker Buildx
         id: setup-buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Change to updated Docker Buildx
+        env:
+          BUILDX_NAME: ${{ steps.setup-buildx.outputs.name }}
         run: |
-          echo "Changing buildx to ${{ steps.setup-buildx.outputs.name }}"
-          docker buildx use "${{ steps.setup-buildx.outputs.name }}"
+          echo "Changing buildx to ${BUILDX_NAME}"
+          docker buildx use "$BUILDX_NAME"
 
       - name: Build project (dist)
         id: build-dist
@@ -133,18 +144,22 @@ jobs:
           docker buildx use default
 
       - name: Upload to s3
-        if: ${{ contains(github.event.pull_request.labels.*.name, 'ok-to-upload') || inputs.release == true }}
+        if: >-
+          contains(github.event.pull_request.labels.*.name, 'ok-to-upload') ||
+          inputs.release == true
         uses: ./.github/actions/upload-to-s3
         with:
           arch: ${{ env.ARCH }}
           build-type: ${{ matrix.build-type }}
           local-path: ${{ steps.build-dist.outputs.dist-path }}/*
-          remote-subpath: ${{ (inputs.upload-subpath != '' && inputs.upload-subpath) || env.DEFAULT_UPPATH }}
+          remote-subpath: >-
+            ${{ inputs.upload-subpath != '' &&
+              inputs.upload-subpath || env.DEFAULT_UPPATH }}
           access-key: ${{ secrets.AWS_ACCESS_KEY }}
           secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Clean-up
-        if: ${{ always() }}
+        if: always()
         run: |
           sudo rm -rf artifacts build*
           docker buildx use default
